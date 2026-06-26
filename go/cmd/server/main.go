@@ -31,7 +31,7 @@ func main() {
 	log.Println("SQLite: OK")
 
 	// Wire up routes
-	mux := api.NewRouter(db, sidecarURL)
+	mux := api.NewRouter(db.DB, sidecarURL)
 
 	log.Printf("AlgoLens API listening on %s\n", serverPort)
 	if err := http.ListenAndServe(serverPort, mux); err != nil {

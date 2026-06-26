@@ -5,17 +5,20 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// DB wraps sql.DB so callers can use db.Close() and pass db.DB to store funcs.
+type DB struct{ *sql.DB }
+
 // Open opens (or creates) the SQLite database and runs migrations.
-func Open(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", path+"?_journal_mode=WAL")
+func Open(path string) (*DB, error) {
+	raw, err := sql.Open("sqlite", path+"?_journal_mode=WAL")
 	if err != nil {
 		return nil, err
 	}
-	if err := migrate(db); err != nil {
-		db.Close()
+	if err := migrate(raw); err != nil {
+		raw.Close()
 		return nil, err
 	}
-	return db, nil
+	return &DB{raw}, nil
 }
 
 func migrate(db *sql.DB) error {
