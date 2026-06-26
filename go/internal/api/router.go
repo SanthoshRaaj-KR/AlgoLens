@@ -13,6 +13,15 @@ func NewRouter(db *sql.DB, sidecarURL string) http.Handler {
 
 	mux.HandleFunc("GET /health", h.health)
 
+	// Phase 6 REST API
+	mux.HandleFunc("POST /api/probe", h.apiProbe)
+	mux.HandleFunc("POST /api/deployments", h.apiSaveDeployment)
+	mux.HandleFunc("GET /api/deployments", h.apiListDeployments)
+	mux.HandleFunc("GET /api/deployments/{id}", h.apiGetDeployment)
+	mux.HandleFunc("GET /api/diff", h.apiDiff)
+	mux.HandleFunc("GET /api/timeline", h.apiTimeline)
+	mux.HandleFunc("POST /api/search", h.apiSearch)
+
 	return corsMiddleware(mux)
 }
 

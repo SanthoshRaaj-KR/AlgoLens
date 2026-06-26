@@ -64,13 +64,13 @@ func ListDeployments(db *sql.DB, endpoint string) ([]Deployment, error) {
 			complexity_class, complexity_exponent, memory_growth_rate,
 			concurrency_cliff, breaking_point, read_write_ratio,
 			fitted_curve, sweep_result
-			FROM deployments ORDER BY created_at DESC`)
+			FROM deployments ORDER BY created_at DESC, id DESC`)
 	} else {
 		rows, err = db.Query(`SELECT id, endpoint, version, notes, created_at,
 			complexity_class, complexity_exponent, memory_growth_rate,
 			concurrency_cliff, breaking_point, read_write_ratio,
 			fitted_curve, sweep_result
-			FROM deployments WHERE endpoint = ? ORDER BY created_at DESC`, endpoint)
+			FROM deployments WHERE endpoint = ? ORDER BY created_at DESC, id DESC`, endpoint)
 	}
 	if err != nil {
 		return nil, err
