@@ -60,12 +60,14 @@
 
 ### Tasks
 - [ ] `SweepController`: iterates over `InputSizes × ConcurrencyLevels`, calls the probing harness for each combination
+- [ ] **Adaptive settling delay between steps**: after each step sleep `max(300ms, 3 × p99_of_last_step)` — see LOGIC.md §3d for full rationale. Prevents bleed-through noise and false complexity classification.
+- [ ] **Per-step warmup**: fire 2 discarded requests at the start of each new n value to re-warm CPU scaling and OS scheduler after the settle period
 - [ ] Configurable parallelism: run multiple probe points concurrently (bounded by a semaphore to avoid hammering the target)
 - [ ] Result aggregation: collect all `ProbePoint` results into a `SweepResult{Points []ProbePoint}` struct
 - [ ] Per-combination retry with exponential backoff on connection errors (not on 4xx/5xx — those are real data)
-- [ ] Probe duration estimate: given the sweep config, log estimated time before starting
+- [ ] Probe duration estimate: given the sweep config, log estimated time before starting (must account for adaptive settle times in the estimate)
 
-**Exit criterion:** Full sweep runs against a local test server with 3 input sizes × 3 concurrency levels = 9 probe points returned correctly.
+**Exit criterion:** Full sweep runs against a local test server with 3 input sizes × 3 concurrency levels = 9 probe points returned correctly. Verified that p50 values are stable (< 10% variance) across two identical sweeps.
 
 ---
 
