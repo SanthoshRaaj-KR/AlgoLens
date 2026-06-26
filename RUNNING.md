@@ -89,6 +89,28 @@ No data is written automatically — only when you explicitly call
 
 ---
 
+## REST API reference
+
+All endpoints on `http://localhost:8080`.
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/health` | Liveness check |
+| POST | `/api/probe` | Run a sweep + fingerprint. Body: `{endpoint, method, payload_template, input_sizes, concurrency_levels, timeout_ms}`. Returns sweep points + fingerprint vector + fit result. **Does not save.** |
+| POST | `/api/deployments` | Save a fingerprint. Body: `{endpoint, version, notes, fingerprint_vector, fitted_curve, sweep_result}` |
+| GET | `/api/deployments?endpoint=` | List all deployments for an endpoint (newest first) |
+| GET | `/api/deployments/{id}` | Fetch one deployment by ID |
+| GET | `/api/diff?a={id}&b={id}` | Field-level delta + plain-English regression summary between two deployments |
+| GET | `/api/timeline?endpoint=` | All deployments for an endpoint in chronological order (oldest first) |
+| POST | `/api/search` | Body: `{fingerprint_vector}`. Returns all stored deployments ranked by cosine similarity |
+
+### Example: run a probe
+
+```powershell
+$body = '{"endpoint":"http://localhost:9000/api?n={{n}}","method":"GET","input_sizes":[1,2,4,8,16],"concurrency_levels":[1,2],"timeout_ms":2000}'
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/probe -Body $body -ContentType "application/json"
+```
+
 ## Phases complete
 
 | Phase | Status | What it built |
@@ -97,5 +119,6 @@ No data is written automatically — only when you explicitly call
 | 2 | Done | Go probing harness (ProbeStep, warmup, adaptive settling) |
 | 3 | Done | Go sweep controller (n × concurrency matrix, retry, breaking-point stop) |
 | 4 | Done | Python sidecar (curve fitting, similarity, 13 tests) |
-| 5 | Next | Fingerprint vector builder + SQLite save |
-| 6–10 | Future | REST API, React frontend, diff view, timeline, polish |
+| 5 | Done | Fingerprint vector builder (cliff, growth rate, breaking point) + SQLite CRUD |
+| 6 | Done | Full REST API (probe, deployments, diff, timeline, search) |
+| 7–10 | Next | React frontend, diff view, timeline chart, polish |
