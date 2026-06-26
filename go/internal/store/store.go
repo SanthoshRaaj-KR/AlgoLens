@@ -2,12 +2,12 @@ package store
 
 import (
 	"database/sql"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // Open opens (or creates) the SQLite database and runs migrations.
 func Open(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL")
+	db, err := sql.Open("sqlite", path+"?_journal_mode=WAL")
 	if err != nil {
 		return nil, err
 	}
