@@ -14,11 +14,20 @@ const EMPTY_VECTOR: FingerprintVector = {
   ReadWriteRatio: 0.5,
 }
 
-function scoreColor(score: number) {
-  if (score >= 0.9) return 'text-red-600'
-  if (score >= 0.7) return 'text-yellow-600'
-  return 'text-green-600'
+function scoreStyle(score: number): React.CSSProperties {
+  if (score >= 0.9) return { color: '#f87171', fontWeight: 700 }
+  if (score >= 0.7) return { color: '#fbbf24', fontWeight: 700 }
+  return { color: '#34d399', fontWeight: 700 }
 }
+
+const FIELDS: { key: keyof FingerprintVector; label: string; type: string }[] = [
+  { key: 'ComplexityClass',    label: 'Complexity Class',    type: 'text' },
+  { key: 'ComplexityExponent', label: 'Complexity Exponent', type: 'number' },
+  { key: 'MemoryGrowthRate',   label: 'Memory Growth Rate',  type: 'number' },
+  { key: 'ConcurrencyCliff',   label: 'Concurrency Cliff',   type: 'number' },
+  { key: 'BreakingPoint',      label: 'Breaking Point',      type: 'number' },
+  { key: 'ReadWriteRatio',     label: 'Read / Write Ratio',  type: 'number' },
+]
 
 export default function SearchPage() {
   const [vec, setVec] = useState<FingerprintVector>(EMPTY_VECTOR)
@@ -46,85 +55,105 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-base font-mono font-semibold text-zinc-900">Similarity Search</h1>
-      <p className="text-xs font-mono text-zinc-400">Enter a fingerprint vector to find the most similar saved deployments (cosine similarity).</p>
+    <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* Header */}
+      <div>
+        <h1 style={{ fontSize: 22, fontWeight: 600, color: '#f1f5f9', letterSpacing: '-0.02em', margin: 0 }}>
+          Similarity Search
+        </h1>
+        <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0', fontFamily: 'var(--font-geist-mono)' }}>
+          Find saved deployments with similar fingerprint vectors using cosine similarity
+        </p>
+      </div>
 
       {/* Vector input */}
-      <div className="border border-zinc-200 rounded-lg overflow-hidden">
-        <div className="bg-zinc-50 px-4 py-2 border-b border-zinc-200">
-          <span className="text-xs font-mono font-semibold text-zinc-500 uppercase tracking-wide">Query Vector</span>
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Query Vector</span>
         </div>
-        <div className="p-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {[
-            { key: 'ComplexityClass',    label: 'Complexity Class',    type: 'text' },
-            { key: 'ComplexityExponent', label: 'Complexity Exponent', type: 'number' },
-            { key: 'MemoryGrowthRate',   label: 'Memory Growth Rate',  type: 'number' },
-            { key: 'ConcurrencyCliff',   label: 'Concurrency Cliff',   type: 'number' },
-            { key: 'BreakingPoint',      label: 'Breaking Point',      type: 'number' },
-            { key: 'ReadWriteRatio',     label: 'Read/Write Ratio',    type: 'number' },
-          ].map(({ key, label, type }) => (
+        <div
+          className="card-body"
+          style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}
+        >
+          {FIELDS.map(({ key, label, type }) => (
             <div key={key}>
-              <label className="block text-xs font-mono text-zinc-500 mb-1">{label}</label>
+              <label className="input-label">{label}</label>
               <input
                 type={type}
                 step="any"
-                value={String(vec[key as keyof FingerprintVector])}
-                onChange={setField(key as keyof FingerprintVector)}
-                className="w-full border border-zinc-200 rounded px-3 py-1.5 text-xs font-mono focus:outline-none focus:border-zinc-400"
+                value={String(vec[key])}
+                onChange={setField(key)}
+                className="input"
               />
             </div>
           ))}
         </div>
-        <div className="px-4 pb-4">
-          <button
-            onClick={run} disabled={loading}
-            className="px-4 py-2 text-xs font-mono bg-zinc-900 text-white rounded hover:bg-zinc-700 disabled:opacity-50"
-          >
-            {loading ? 'Searching…' : 'Search'}
+        <div style={{ padding: '0 16px 16px' }}>
+          <button onClick={run} disabled={loading} className="btn-primary">
+            {loading ? <><span className="spinner" /> Searching…</> : 'Search'}
           </button>
         </div>
       </div>
 
-      {error && (
-        <div className="text-xs font-mono text-red-600 bg-red-50 border border-red-200 px-4 py-3 rounded">{error}</div>
-      )}
+      {error && <div className="error-box animate-fade-in">{error}</div>}
 
       {results && results.length === 0 && (
-        <div className="text-xs font-mono text-zinc-400 py-8 text-center">No deployments in database to compare against.</div>
+        <div className="card animate-fade-up">
+          <div className="empty-state">
+            <p style={{ margin: '0 0 6px' }}>No deployments saved yet</p>
+            <p style={{ margin: 0, color: '#334155', fontSize: 12 }}>Save a probe result first, then search for similar ones.</p>
+          </div>
+        </div>
       )}
 
       {results && results.length > 0 && (
-        <table className="w-full text-xs font-mono border border-zinc-200 rounded-lg overflow-hidden">
-          <thead>
-            <tr className="bg-zinc-50 border-b border-zinc-200">
-              <th className="px-4 py-2 text-left text-zinc-500">Score</th>
-              <th className="px-4 py-2 text-left text-zinc-500">ID</th>
-              <th className="px-4 py-2 text-left text-zinc-500">Endpoint</th>
-              <th className="px-4 py-2 text-left text-zinc-500">Version</th>
-              <th className="px-4 py-2 text-left text-zinc-500">Complexity</th>
-              <th className="px-4 py-2 text-left text-zinc-500">Exponent</th>
-              <th className="px-4 py-2 text-left text-zinc-500">Date</th>
-              <th className="px-4 py-2 text-left text-zinc-500"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {results.map((r, i) => (
-              <tr key={r.ID} className={`border-b border-zinc-100 last:border-0 ${i === 0 ? 'bg-yellow-50' : i % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}`}>
-                <td className={`px-4 py-2 font-semibold ${scoreColor(r.Score)}`}>{(r.Score * 100).toFixed(1)}%</td>
-                <td className="px-4 py-2 text-zinc-400">{r.ID}</td>
-                <td className="px-4 py-2 text-zinc-700 max-w-xs truncate" title={r.Endpoint}>{r.Endpoint}</td>
-                <td className="px-4 py-2 text-zinc-700">{r.Version}</td>
-                <td className="px-4 py-2"><ComplexityBadge cls={r.Vector.ComplexityClass} /></td>
-                <td className="px-4 py-2 text-zinc-600">{r.Vector.ComplexityExponent.toFixed(3)}</td>
-                <td className="px-4 py-2 text-zinc-400">{new Date(r.CreatedAt).toLocaleDateString()}</td>
-                <td className="px-4 py-2">
-                  <Link href={`/deployments/${r.ID}`} className="text-zinc-400 hover:text-zinc-700">view →</Link>
-                </td>
+        <div className="card animate-fade-up">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Score</th>
+                <th style={{ width: 48 }}>#</th>
+                <th>Endpoint</th>
+                <th>Version</th>
+                <th>Complexity</th>
+                <th>Exponent</th>
+                <th>Date</th>
+                <th style={{ width: 64 }} />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {results.map((r, i) => (
+                <tr
+                  key={r.ID}
+                  style={{
+                    background: i === 0 ? 'rgba(99,102,241,0.06)' : undefined,
+                  }}
+                >
+                  <td style={scoreStyle(r.Score)}>{(r.Score * 100).toFixed(1)}%</td>
+                  <td style={{ color: '#475569' }}>{r.ID}</td>
+                  <td
+                    style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#e2e8f0' }}
+                    title={r.Endpoint}
+                  >
+                    {r.Endpoint}
+                  </td>
+                  <td style={{ color: '#94a3b8' }}>{r.Version}</td>
+                  <td><ComplexityBadge cls={r.Vector.ComplexityClass} /></td>
+                  <td style={{ color: '#94a3b8' }}>{r.Vector.ComplexityExponent.toFixed(3)}</td>
+                  <td style={{ color: '#475569' }}>{new Date(r.CreatedAt).toLocaleDateString()}</td>
+                  <td>
+                    <Link
+                      href={`/deployments/${r.ID}`}
+                      style={{ color: '#6366f1', textDecoration: 'none', fontSize: 12 }}
+                    >
+                      view →
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
