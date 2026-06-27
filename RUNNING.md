@@ -11,9 +11,25 @@
 ## Port already in use? (common on Windows after a crash)
 
 ```powershell
-# Find what's holding the port and kill it
+# Find what's holding a port and kill it — replace 8001 with 8080 or 9000 as needed
 netstat -ano | findstr ":8001"
 Stop-Process -Id <PID> -Force
+```
+
+Or as a one-liner (no copy-pasting the PID):
+
+```powershell
+# Kill whatever is on port 8080
+$p = (netstat -ano | findstr ":8080 " | Where-Object { $_ -match "LISTENING" }) -replace '.*\s(\d+)$','$1'
+Stop-Process -Id $p -Force
+
+# Kill whatever is on port 8001
+$p = (netstat -ano | findstr ":8001 " | Where-Object { $_ -match "LISTENING" }) -replace '.*\s(\d+)$','$1'
+Stop-Process -Id $p -Force
+
+# Kill whatever is on port 9000
+$p = (netstat -ano | findstr ":9000 " | Where-Object { $_ -match "LISTENING" }) -replace '.*\s(\d+)$','$1'
+Stop-Process -Id $p -Force
 ```
 
 ---

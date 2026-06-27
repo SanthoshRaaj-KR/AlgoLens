@@ -19,9 +19,10 @@ func main() {
 		fmt.Fprintln(w, `{"status":"ok"}`)
 	})
 
-	// O(1) — ignores n entirely, always responds in ~1ms
+	// O(1) — ignores n entirely, always responds in ~10ms.
+	// 10ms is well above the Windows OS timer noise floor (~2ms).
 	mux.HandleFunc("/constant", func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"complexity":"O(1)","n":%s}`, r.URL.Query().Get("n"))
 	})
