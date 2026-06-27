@@ -25,77 +25,99 @@ export default function TimelinePage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-base font-mono font-semibold text-zinc-900">Timeline</h1>
-
-      <div className="flex items-end gap-3">
-        <div className="flex-1">
-          <label className="block text-xs font-mono text-zinc-500 mb-1">Endpoint URL</label>
-          <input
-            value={endpoint}
-            onChange={e => setEndpoint(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && run()}
-            className="w-full border border-zinc-200 rounded px-3 py-1.5 text-xs font-mono focus:outline-none focus:border-zinc-400"
-            placeholder="http://api.example.com/search"
-          />
-        </div>
-        <button
-          onClick={run} disabled={loading || !endpoint.trim()}
-          className="px-4 py-1.5 text-xs font-mono bg-zinc-900 text-white rounded hover:bg-zinc-700 disabled:opacity-50"
-        >
-          {loading ? 'Loading…' : 'Load'}
-        </button>
+    <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* Header */}
+      <div>
+        <h1 style={{ fontSize: 22, fontWeight: 600, color: '#f1f5f9', letterSpacing: '-0.02em', margin: 0 }}>
+          Timeline
+        </h1>
+        <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0', fontFamily: 'var(--font-geist-mono)' }}>
+          Track complexity drift across versions for a specific endpoint
+        </p>
       </div>
 
-      {error && (
-        <div className="text-xs font-mono text-red-600 bg-red-50 border border-red-200 px-4 py-3 rounded">{error}</div>
-      )}
+      {/* Search bar */}
+      <div className="card">
+        <div className="card-body" style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}>
+            <label className="input-label">Endpoint URL</label>
+            <input
+              value={endpoint}
+              onChange={e => setEndpoint(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && run()}
+              className="input"
+              placeholder="http://api.example.com/search"
+            />
+          </div>
+          <button onClick={run} disabled={loading || !endpoint.trim()} className="btn-primary">
+            {loading ? <><span className="spinner" /> Loading…</> : 'Load'}
+          </button>
+        </div>
+      </div>
+
+      {error && <div className="error-box animate-fade-in">{error}</div>}
 
       {list && list.length === 0 && (
-        <div className="text-xs font-mono text-zinc-400 py-8 text-center">No deployments found for this endpoint.</div>
+        <div className="card animate-fade-up">
+          <div className="empty-state">No deployments found for this endpoint.</div>
+        </div>
       )}
 
       {list && list.length > 0 && (
-        <div className="space-y-6">
+        <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Drift chart */}
-          <div className="border border-zinc-200 rounded-lg overflow-hidden">
-            <div className="bg-zinc-50 px-4 py-2 border-b border-zinc-200">
-              <span className="text-xs font-mono font-semibold text-zinc-500 uppercase tracking-wide">Drift Over Time</span>
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">Complexity Drift Over Time</span>
+              <span style={{ fontSize: 12, color: '#475569', fontFamily: 'var(--font-geist-mono)' }}>
+                {list.length} version{list.length !== 1 ? 's' : ''}
+              </span>
             </div>
-            <div className="p-4">
+            <div className="card-body">
               <DriftChart deployments={list} />
             </div>
           </div>
 
-          {/* Chronological table */}
-          <table className="w-full text-xs font-mono border border-zinc-200 rounded-lg overflow-hidden">
-            <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200">
-                <th className="px-4 py-2 text-left text-zinc-500">Date</th>
-                <th className="px-4 py-2 text-left text-zinc-500">Version</th>
-                <th className="px-4 py-2 text-left text-zinc-500">Complexity</th>
-                <th className="px-4 py-2 text-left text-zinc-500">Exponent</th>
-                <th className="px-4 py-2 text-left text-zinc-500">Mem Growth</th>
-                <th className="px-4 py-2 text-left text-zinc-500">Cliff</th>
-                <th className="px-4 py-2 text-left text-zinc-500">Breaking</th>
-                <th className="px-4 py-2 text-left text-zinc-500">Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((d, i) => (
-                <tr key={d.ID} className={`border-b border-zinc-100 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}`}>
-                  <td className="px-4 py-2 text-zinc-400">{new Date(d.CreatedAt).toLocaleString()}</td>
-                  <td className="px-4 py-2 text-zinc-700">{d.Version}</td>
-                  <td className="px-4 py-2"><ComplexityBadge cls={d.Vector.ComplexityClass} /></td>
-                  <td className="px-4 py-2 text-zinc-600">{d.Vector.ComplexityExponent.toFixed(3)}</td>
-                  <td className="px-4 py-2 text-zinc-600">{d.Vector.MemoryGrowthRate.toFixed(4)}</td>
-                  <td className="px-4 py-2 text-zinc-600">{d.Vector.ConcurrencyCliff === 0 ? '—' : d.Vector.ConcurrencyCliff}</td>
-                  <td className="px-4 py-2 text-zinc-600">{d.Vector.BreakingPoint === 0 ? '—' : d.Vector.BreakingPoint}</td>
-                  <td className="px-4 py-2 text-zinc-400">{d.Notes || '—'}</td>
+          {/* Version history table */}
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">Version History</span>
+            </div>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Version</th>
+                  <th>Complexity</th>
+                  <th>Exponent</th>
+                  <th>Mem Growth</th>
+                  <th>Cliff</th>
+                  <th>Breaking</th>
+                  <th>Notes</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {list.map(d => (
+                  <tr key={d.ID}>
+                    <td style={{ color: '#475569', whiteSpace: 'nowrap' }}>{new Date(d.CreatedAt).toLocaleString()}</td>
+                    <td style={{ color: '#94a3b8', fontWeight: 500 }}>{d.Version}</td>
+                    <td><ComplexityBadge cls={d.Vector.ComplexityClass} /></td>
+                    <td style={{ color: '#94a3b8' }}>{d.Vector.ComplexityExponent.toFixed(3)}</td>
+                    <td style={{ color: '#94a3b8' }}>{d.Vector.MemoryGrowthRate.toFixed(4)}</td>
+                    <td style={{ color: d.Vector.ConcurrencyCliff === 0 ? '#334155' : '#fbbf24' }}>
+                      {d.Vector.ConcurrencyCliff === 0 ? '—' : d.Vector.ConcurrencyCliff}
+                    </td>
+                    <td style={{ color: d.Vector.BreakingPoint === 0 ? '#334155' : '#f87171' }}>
+                      {d.Vector.BreakingPoint === 0 ? '—' : d.Vector.BreakingPoint}
+                    </td>
+                    <td style={{ color: '#475569', fontStyle: d.Notes ? 'normal' : 'italic' }}>
+                      {d.Notes || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
