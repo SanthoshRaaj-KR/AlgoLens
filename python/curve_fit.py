@@ -50,6 +50,18 @@ def fit(req: FitRequest):
     n = np.array(req.n_values, dtype=float)
     y = np.array(req.latencies, dtype=float)
 
+    # Flatness check: if the max latency is less than 1.5× the min, the
+    # signal is constant regardless of noise. Curve fitting is unreliable here
+    # because O(1) always gets R²≈0 (it explains no variance), letting noisy
+    # linear/log models win by overfitting the tiny fluctuations.
+    if float(np.min(y)) > 0 and float(np.max(y)) / float(np.min(y)) < 1.5:
+        mean_y = float(np.mean(y))
+        return FitResponse(
+            complexity_class="O(1)", exponent=0.0, coefficient=mean_y,
+            r_squared=1.0,
+            fitted_curve=[[float(ni), mean_y] for ni in n],
+        )
+
     candidates: list[tuple[float, int, str, np.ndarray, list]] = []
 
     for name, fn, exponent, order in _MODELS:
