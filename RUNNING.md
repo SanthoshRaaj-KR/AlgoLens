@@ -4,94 +4,105 @@
 
 - Go 1.22+
 - Python 3.11+
-- Node 18+ (frontend, not yet needed)
+- Node 18+
+- A Supabase project (free tier is fine)
+
+---
+
+## One-time setup
+
+### 1. Set DATABASE_URL
+
+Copy `.env.example` to `go/.env` and fill in your Supabase connection string:
+
+```powershell
+Copy-Item .env.example go\.env
+# Edit go\.env and set DATABASE_URL to your Supabase URI:
+# DATABASE_URL=postgresql://postgres:[PASSWORD]@db.[REF].supabase.co:5432/postgres
+```
+
+Find the URI in: Supabase dashboard → Project Settings → Database → Connection string (URI tab).
+
+The `deployments` table is created automatically on first run — no manual migration needed.
+
+### 2. Install frontend dependencies
+
+```powershell
+cd web
+npm install
+```
 
 ---
 
 ## Port already in use? (common on Windows after a crash)
 
 ```powershell
-# Find what's holding a port and kill it — replace 8001 with 8080 or 9000 as needed
-netstat -ano | findstr ":8001"
-Stop-Process -Id <PID> -Force
-```
-
-Or as a one-liner (no copy-pasting the PID):
-
-```powershell
-# Kill whatever is on port 8080
-$p = (netstat -ano | findstr ":8080 " | Where-Object { $_ -match "LISTENING" }) -replace '.*\s(\d+)$','$1'
-Stop-Process -Id $p -Force
-
-# Kill whatever is on port 8001
+# Replace 8001 with 8080, 9000, or 3000 as needed
 $p = (netstat -ano | findstr ":8001 " | Where-Object { $_ -match "LISTENING" }) -replace '.*\s(\d+)$','$1'
-Stop-Process -Id $p -Force
-
-# Kill whatever is on port 9000
-$p = (netstat -ano | findstr ":9000 " | Where-Object { $_ -match "LISTENING" }) -replace '.*\s(\d+)$','$1'
 Stop-Process -Id $p -Force
 ```
 
 ---
 
-## Start order (manual)
+## Start order (4 terminals)
 
-Services must start in this order because the Go server waits for the
-Python sidecar to be healthy before it proceeds.
+Services must start in this order: Python sidecar first, then Go (waits for sidecar), then frontend.
 
-### 1. Python sidecar (terminal 1)
+### Terminal 1 — Python sidecar
 
 ```powershell
 cd python
-.\.venv\Scripts\Activate.ps1          # activate venv
+.\.venv\Scripts\Activate.ps1
 uvicorn main:app --port 8001 --reload
 ```
 
-Verify: `curl http://localhost:8001/health`
-Expected: `{"status":"ok"}`
+Verify: `curl http://localhost:8001/health` → `{"status":"ok"}`
 
-### 2. Go API server (terminal 2)
+### Terminal 2 — Go API server
 
 ```powershell
 cd go
 go run ./cmd/server
 ```
 
-The server polls `localhost:8001/health` every second (up to 30s).
-Once it sees OK it opens SQLite, wires routes, and starts on `:8080`.
+Reads `go/.env` automatically. Polls sidecar until healthy, then connects to Supabase and starts on `:8080`.
 
-Verify: `curl http://localhost:8080/health`
-Expected: `{"status":"ok"}`
+Verify: `curl http://localhost:8080/health` → `{"status":"ok"}`
+
+### Terminal 3 — Next.js frontend
+
+```powershell
+cd web
+npm run dev
+```
+
+Opens on `http://localhost:3000`. Talks to the Go API on `:8080`.
+
+### Terminal 4 (optional) — Test server with known complexity
+
+```powershell
+cd go
+go run ./test/server
+```
+
+Runs on `:9000`. Use these URLs in the Probe page:
+- `http://localhost:9000/constant?n={{n}}` → O(1)
+- `http://localhost:9000/linear?n={{n}}` → O(n)
+- `http://localhost:9000/quadratic?n={{n}}` → O(n²)
 
 ---
 
 ## Run tests
 
-### Go (all packages)
-
 ```powershell
+# Go — store/API tests need DATABASE_URL set
 cd go
 go test ./... -timeout 120s
-```
 
-### Python sidecar
-
-```powershell
+# Python sidecar
 cd python
 .\.venv\Scripts\Activate.ps1
 python -m pytest test_sidecar.py -v
-```
-
----
-
-## Manual smoke test — curve fitting
-
-With the sidecar running on port 8001:
-
-```powershell
-# Should return O(n²) with R² > 0.99
-$body = '{"n_values":[1,2,4,8,16,32,64,128,256,512,1024],"latencies":[1.0001,1.0004,1.0016,1.0064,1.0256,1.1024,1.4096,2.6384,7.5536,27.2144,105.8576]}'
-Invoke-RestMethod -Method Post -Uri http://localhost:8001/fit -Body $body -ContentType "application/json" | ConvertTo-Json
 ```
 
 ---
@@ -101,17 +112,9 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8001/fit -Body $body -Conte
 | Service | Port | Role |
 |---|---|---|
 | Python sidecar | 8001 | Curve fitting (scipy), cosine similarity (numpy) |
-| Go API server | 8080 | HTTP probing, sweep orchestration, SQLite store, REST API |
-| React frontend | 5173 | UI (not yet built) |
-
----
-
-## SQLite database
-
-The Go server creates `go/algolens.db` on first run (WAL mode).
-The `deployments` table holds all saved fingerprint results.
-No data is written automatically — only when you explicitly call
-`POST /api/deployments` (Phase 6).
+| Go API server | 8080 | HTTP probing, sweep orchestration, Postgres store, REST API |
+| Next.js frontend | 3000 | UI — probe, deployments, diff, timeline, search |
+| Test server | 9000 | Fake endpoints with known O(1)/O(n)/O(n²) behaviour |
 
 ---
 
@@ -122,64 +125,27 @@ All endpoints on `http://localhost:8080`.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/health` | Liveness check |
-| POST | `/api/probe` | Run a sweep + fingerprint. Body: `{endpoint, method, payload_template, input_sizes, concurrency_levels, timeout_ms}`. Returns sweep points + fingerprint vector + fit result. **Does not save.** |
-| POST | `/api/deployments` | Save a fingerprint. Body: `{endpoint, version, notes, fingerprint_vector, fitted_curve, sweep_result}` |
-| GET | `/api/deployments?endpoint=` | List all deployments for an endpoint (newest first) |
-| GET | `/api/deployments/{id}` | Fetch one deployment by ID |
-| GET | `/api/diff?a={id}&b={id}` | Field-level delta + plain-English regression summary between two deployments |
-| GET | `/api/timeline?endpoint=` | All deployments for an endpoint in chronological order (oldest first) |
-| POST | `/api/search` | Body: `{fingerprint_vector}`. Returns all stored deployments ranked by cosine similarity |
-
-### Example: run a probe
-
-```powershell
-$body = '{"endpoint":"http://localhost:9000/api?n={{n}}","method":"GET","input_sizes":[1,2,4,8,16],"concurrency_levels":[1,2],"timeout_ms":2000}'
-Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/probe -Body $body -ContentType "application/json"
-```
-
-## End-to-end demo
-
-The demo probes two test endpoints with known complexity, saves them, diffs,
-checks the timeline, and runs a similarity search.
-
-### 1. Start the test server (terminal 3)
-
-```powershell
-cd go
-go run ./test/server
-```
-
-Runs on `:9000`. Endpoints:
-- `GET /constant?n=X` — O(1), always ~1ms
-- `GET /linear?n=X`   — O(n), sleeps n ms
-- `GET /quadratic?n=X`— O(n²), sleeps n²×50µs
-
-### 2. Run the demo script
-
-```powershell
-powershell -ExecutionPolicy Bypass -File test\demo.ps1
-```
-
-The script:
-1. Verifies all 3 services are up
-2. Probes `/constant` → expects O(1)
-3. Saves it as deployment v1
-4. Probes `/quadratic` → expects O(n²)
-5. Saves it as deployment v2
-6. Diffs v1 vs v2 — shows regression summary
-7. Prints the timeline (chronological)
-8. Runs similarity search — v2 scores ~1.0, v1 scores low
+| POST | `/api/probe` | Run sweep + fingerprint. Does **not** save. |
+| POST | `/api/deployments` | Save a fingerprint result |
+| GET | `/api/deployments?endpoint=` | List all deployments (newest first) |
+| GET | `/api/deployments/{id}` | Fetch one deployment |
+| GET | `/api/diff?a={id}&b={id}` | Field deltas + plain-English regression summary |
+| GET | `/api/timeline?endpoint=` | All deployments chronologically (oldest first) |
+| POST | `/api/search` | Body: `{fingerprint_vector}` — ranked cosine similarity results |
 
 ---
 
-## Phases complete
+## Phase status
 
 | Phase | Status | What it built |
 |---|---|---|
-| 1 | Done | Go server scaffold, SQLite schema, health endpoints |
-| 2 | Done | Go probing harness (ProbeStep, warmup, adaptive settling) |
-| 3 | Done | Go sweep controller (n × concurrency matrix, retry, breaking-point stop) |
+| 1 | Done | Go + Python scaffold, health endpoints |
+| 2 | Done | Probing harness (ProbeStep, warmup, HDR histogram) |
+| 3 | Done | Sweep controller (n × concurrency matrix, adaptive settling, retry) |
 | 4 | Done | Python sidecar (curve fitting, similarity, 13 tests) |
-| 5 | Done | Fingerprint vector builder (cliff, growth rate, breaking point) + SQLite CRUD |
+| 5 | Done | Fingerprint vector builder (cliff, growth rate, breaking point) |
 | 6 | Done | Full REST API (probe, deployments, diff, timeline, search) |
-| 7–10 | Next | React frontend, diff view, timeline chart, polish |
+| 7 | Done | Next.js frontend — probe form, results, save deployment |
+| 8 | Done | Diff view — delta table, curve overlay, plain-English summary |
+| 9 | Done | Timeline drift chart, cosine similarity search |
+| 10 | In progress | Polish, error handling, integration |

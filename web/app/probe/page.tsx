@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import type { ProbeResponse } from '@/lib/types'
 import { SweepTable } from '@/components/sweep-table'
@@ -29,6 +29,14 @@ export default function ProbePage() {
   const [error, setError] = useState<string | null>(null)
 
   // Save modal state
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    if (!running) { setElapsed(0); return }
+    const t = setInterval(() => setElapsed(e => e + 1), 1000)
+    return () => clearInterval(t)
+  }, [running])
+
   const [showSave, setShowSave] = useState(false)
   const [version, setVersion] = useState('')
   const [notes, setNotes] = useState('')
@@ -171,7 +179,7 @@ export default function ProbePage() {
             disabled={running}
             className="px-4 py-2 text-xs font-mono bg-zinc-900 text-white rounded hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {running ? 'Running sweep…' : 'Run Probe'}
+            {running ? `Running… ${elapsed}s` : 'Run Probe'}
           </button>
         </div>
       </div>

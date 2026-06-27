@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import type { ProbePoint } from '@/lib/types'
 
 interface Props { points: ProbePoint[] }
@@ -25,11 +26,11 @@ export function SweepTable({ points }: Props) {
           <tr className="bg-zinc-50">
             <th className="px-3 py-2 border-b border-r border-zinc-200 text-zinc-400"></th>
             {cs.map(c => (
-              <>
-                <th key={`${c}-p50`} className="px-3 py-2 text-center text-zinc-400 border-b border-zinc-200">p50</th>
-                <th key={`${c}-p95`} className="px-3 py-2 text-center text-zinc-400 border-b border-zinc-200">p95</th>
-                <th key={`${c}-p99`} className="px-3 py-2 text-center text-zinc-400 border-b border-r border-zinc-200">p99</th>
-              </>
+              <Fragment key={c}>
+                <th className="px-3 py-2 text-center text-zinc-400 border-b border-zinc-200">p50</th>
+                <th className="px-3 py-2 text-center text-zinc-400 border-b border-zinc-200">p95</th>
+                <th className="px-3 py-2 text-center text-zinc-400 border-b border-r border-zinc-200">p99</th>
+              </Fragment>
             ))}
           </tr>
         </thead>
@@ -40,19 +41,19 @@ export function SweepTable({ points }: Props) {
               {cs.map(c => {
                 const pt = get(n, c)
                 return pt ? (
-                  <>
-                    <td key={`${c}-p50`} className="px-3 py-2 text-center text-zinc-800">{pt.P50.toFixed(1)}</td>
-                    <td key={`${c}-p95`} className="px-3 py-2 text-center text-zinc-600">{pt.P95.toFixed(1)}</td>
-                    <td key={`${c}-p99`} className={`px-3 py-2 text-center border-r border-zinc-200 ${pt.Errors > 0 ? 'text-red-600' : 'text-zinc-500'}`}>
+                  <Fragment key={c}>
+                    <td className="px-3 py-2 text-center text-zinc-800">{pt.P50.toFixed(1)}</td>
+                    <td className="px-3 py-2 text-center text-zinc-600">{pt.P95.toFixed(1)}</td>
+                    <td className={`px-3 py-2 text-center border-r border-zinc-200 ${pt.Errors > 0 ? 'text-red-600' : 'text-zinc-500'}`}>
                       {pt.P99.toFixed(1)}{pt.Errors > 0 ? ` (${pt.Errors}err)` : ''}
                     </td>
-                  </>
+                  </Fragment>
                 ) : (
-                  <>
-                    <td key={`${c}-p50`} className="px-3 py-2 text-center text-zinc-300">—</td>
-                    <td key={`${c}-p95`} className="px-3 py-2 text-center text-zinc-300">—</td>
-                    <td key={`${c}-p99`} className="px-3 py-2 text-center text-zinc-300 border-r border-zinc-200">—</td>
-                  </>
+                  <Fragment key={c}>
+                    <td className="px-3 py-2 text-center text-zinc-300">—</td>
+                    <td className="px-3 py-2 text-center text-zinc-300">—</td>
+                    <td className="px-3 py-2 text-center text-zinc-300 border-r border-zinc-200">—</td>
+                  </Fragment>
                 )
               })}
             </tr>

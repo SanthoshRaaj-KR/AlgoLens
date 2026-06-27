@@ -5,16 +5,22 @@ import { SweepTable } from '@/components/sweep-table'
 import { CurveChart } from '@/components/curve-chart'
 import type { ProbePoint } from '@/lib/types'
 import Link from 'next/link'
+import { notFound } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
 export default async function DeploymentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const d = await api.getDeployment(Number(id))
+
+  let d
+  try {
+    d = await api.getDeployment(Number(id))
+  } catch {
+    notFound()
+  }
 
   let sweepPoints: ProbePoint[] = []
   let fittedCurve: [number, number][] = []
-
   try { sweepPoints = JSON.parse(d.SweepResultJSON) } catch {}
   try { fittedCurve = JSON.parse(d.FittedCurveJSON) } catch {}
 
@@ -58,9 +64,8 @@ export default async function DeploymentPage({ params }: { params: Promise<{ id:
         </div>
       )}
 
-      {/* Raw blobs */}
       <details className="border border-zinc-200 rounded-lg overflow-hidden">
-        <summary className="bg-zinc-50 px-4 py-2 border-b border-zinc-200 text-xs font-mono font-semibold text-zinc-500 uppercase tracking-wide cursor-pointer">
+        <summary className="bg-zinc-50 px-4 py-2 border-b border-zinc-200 text-xs font-mono font-semibold text-zinc-500 uppercase tracking-wide cursor-pointer hover:bg-zinc-100">
           Raw JSON blobs
         </summary>
         <div className="p-4 space-y-4">
