@@ -8,6 +8,16 @@
 
 ---
 
+## Port already in use? (common on Windows after a crash)
+
+```powershell
+# Find what's holding the port and kill it
+netstat -ano | findstr ":8001"
+Stop-Process -Id <PID> -Force
+```
+
+---
+
 ## Start order (manual)
 
 Services must start in this order because the Go server waits for the
@@ -110,6 +120,41 @@ All endpoints on `http://localhost:8080`.
 $body = '{"endpoint":"http://localhost:9000/api?n={{n}}","method":"GET","input_sizes":[1,2,4,8,16],"concurrency_levels":[1,2],"timeout_ms":2000}'
 Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/probe -Body $body -ContentType "application/json"
 ```
+
+## End-to-end demo
+
+The demo probes two test endpoints with known complexity, saves them, diffs,
+checks the timeline, and runs a similarity search.
+
+### 1. Start the test server (terminal 3)
+
+```powershell
+cd go
+go run ./test/server
+```
+
+Runs on `:9000`. Endpoints:
+- `GET /constant?n=X` — O(1), always ~1ms
+- `GET /linear?n=X`   — O(n), sleeps n ms
+- `GET /quadratic?n=X`— O(n²), sleeps n²×50µs
+
+### 2. Run the demo script
+
+```powershell
+powershell -ExecutionPolicy Bypass -File test\demo.ps1
+```
+
+The script:
+1. Verifies all 3 services are up
+2. Probes `/constant` → expects O(1)
+3. Saves it as deployment v1
+4. Probes `/quadratic` → expects O(n²)
+5. Saves it as deployment v2
+6. Diffs v1 vs v2 — shows regression summary
+7. Prints the timeline (chronological)
+8. Runs similarity search — v2 scores ~1.0, v1 scores low
+
+---
 
 ## Phases complete
 
