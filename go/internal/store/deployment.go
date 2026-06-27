@@ -19,27 +19,26 @@ type Deployment struct {
 	SweepResultJSON string // raw JSON blob
 }
 
-// SaveDeployment inserts a new row and returns its auto-increment ID.
+// SaveDeployment inserts a new row and returns its ID.
 // Never called automatically — only on explicit user action.
 func SaveDeployment(db *sql.DB, endpoint, version, notes string, v fingerprint.Vector, fittedCurveJSON, sweepResultJSON string) (int64, error) {
-	res, err := db.Exec(`
+	var id int64
+	err := db.QueryRow(`
 		INSERT INTO deployments (
 			endpoint, version, notes,
 			complexity_class, complexity_exponent,
 			memory_growth_rate, concurrency_cliff,
 			breaking_point, read_write_ratio,
 			fitted_curve, sweep_result
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id`,
 		endpoint, version, notes,
 		v.ComplexityClass, v.ComplexityExponent,
 		v.MemoryGrowthRate, v.ConcurrencyCliff,
 		v.BreakingPoint, v.ReadWriteRatio,
 		fittedCurveJSON, sweepResultJSON,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
+	).Scan(&id)
+	return id, err
 }
 
 // GetDeployment fetches a single deployment by ID.
@@ -50,7 +49,7 @@ func GetDeployment(db *sql.DB, id int64) (Deployment, error) {
 		       memory_growth_rate, concurrency_cliff,
 		       breaking_point, read_write_ratio,
 		       fitted_curve, sweep_result
-		FROM deployments WHERE id = ?`, id)
+		FROM deployments WHERE id = $1`, id)
 	return scanDeployment(row)
 }
 
@@ -70,7 +69,7 @@ func ListDeployments(db *sql.DB, endpoint string) ([]Deployment, error) {
 			complexity_class, complexity_exponent, memory_growth_rate,
 			concurrency_cliff, breaking_point, read_write_ratio,
 			fitted_curve, sweep_result
-			FROM deployments WHERE endpoint = ? ORDER BY created_at DESC, id DESC`, endpoint)
+			FROM deployments WHERE endpoint = $1 ORDER BY created_at DESC, id DESC`, endpoint)
 	}
 	if err != nil {
 		return nil, err
@@ -94,10 +93,9 @@ type scanner interface {
 
 func scanDeployment(s scanner) (Deployment, error) {
 	var d Deployment
-	var createdAt string
 	var notes, fittedCurve, sweepResult sql.NullString
 	err := s.Scan(
-		&d.ID, &d.Endpoint, &d.Version, &notes, &createdAt,
+		&d.ID, &d.Endpoint, &d.Version, &notes, &d.CreatedAt,
 		&d.Vector.ComplexityClass, &d.Vector.ComplexityExponent,
 		&d.Vector.MemoryGrowthRate, &d.Vector.ConcurrencyCliff,
 		&d.Vector.BreakingPoint, &d.Vector.ReadWriteRatio,
@@ -109,6 +107,5 @@ func scanDeployment(s scanner) (Deployment, error) {
 	d.Notes = notes.String
 	d.FittedCurveJSON = fittedCurve.String
 	d.SweepResultJSON = sweepResult.String
-	d.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
 	return d, nil
 }

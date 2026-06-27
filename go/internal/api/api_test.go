@@ -6,22 +6,29 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/SanthoshRaaj-KR/algolens/internal/fingerprint"
 	"github.com/SanthoshRaaj-KR/algolens/internal/store"
-	_ "modernc.org/sqlite"
 )
 
 // ── test helpers ─────────────────────────────────────────────────────────
 
 func openMemDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := store.Open(":memory:")
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set — skipping integration test")
+	}
+	db, err := store.Open(dsn)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() {
+		db.Exec("TRUNCATE TABLE deployments RESTART IDENTITY")
+		db.Close()
+	})
 	return db.DB
 }
 

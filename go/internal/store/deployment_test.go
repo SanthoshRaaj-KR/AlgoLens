@@ -1,6 +1,7 @@
 package store
 
 import (
+	"os"
 	"testing"
 
 	"github.com/SanthoshRaaj-KR/algolens/internal/fingerprint"
@@ -8,11 +9,18 @@ import (
 
 func openTestDB(t *testing.T) *DB {
 	t.Helper()
-	db, err := Open(":memory:")
-	if err != nil {
-		t.Fatalf("open in-memory DB: %v", err)
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set — skipping integration test")
 	}
-	t.Cleanup(func() { db.Close() })
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatalf("open DB: %v", err)
+	}
+	t.Cleanup(func() {
+		db.Exec("TRUNCATE TABLE deployments RESTART IDENTITY")
+		db.Close()
+	})
 	return db
 }
 

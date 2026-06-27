@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/SanthoshRaaj-KR/algolens/internal/api"
 	"github.com/SanthoshRaaj-KR/algolens/internal/store"
+	"github.com/joho/godotenv"
 )
 
 const (
@@ -16,19 +18,26 @@ const (
 )
 
 func main() {
+	// Load .env if present (ignored if missing)
+	_ = godotenv.Load()
+
 	// Wait for Python sidecar to be ready
 	if err := waitForSidecar(sidecarURL+"/health", 30*time.Second); err != nil {
 		log.Fatalf("Python sidecar not ready: %v", err)
 	}
 	log.Println("Python sidecar: OK")
 
-	// Open SQLite DB
-	db, err := store.Open("algolens.db")
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Fatal("DATABASE_URL environment variable not set")
+	}
+
+	db, err := store.Open(dsn)
 	if err != nil {
 		log.Fatalf("Failed to open DB: %v", err)
 	}
 	defer db.Close()
-	log.Println("SQLite: OK")
+	log.Println("Supabase: OK")
 
 	// Wire up routes
 	mux := api.NewRouter(db.DB, sidecarURL)
