@@ -5,54 +5,66 @@ import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
+function StatCard({ label, value, sub, icon }: { label: string; value: string | number; sub?: string; icon: string }) {
+  return (
+    <div className="stat-card anim-fade-up">
+      <div className="stat-icon">{icon}</div>
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
+      {sub && <div className="stat-sub">{sub}</div>}
+    </div>
+  )
+}
+
 export default async function DashboardPage() {
   let deployments: Deployment[] = []
   let error: string | null = null
+  try { deployments = await api.listDeployments() } catch (e) { error = (e as Error).message }
 
-  try {
-    deployments = await api.listDeployments()
-  } catch (e) {
-    error = (e as Error).message
-  }
+  const uniqueEndpoints = new Set(deployments.map(d => d.Endpoint)).size
+  const topClass = deployments.length
+    ? Object.entries(deployments.reduce((acc, d) => { acc[d.Vector.ComplexityClass] = (acc[d.Vector.ComplexityClass] || 0) + 1; return acc }, {} as Record<string, number>))
+        .sort(([,a],[,b]) => b - a)[0]?.[0] ?? '—'
+    : '—'
 
   return (
-    <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+      <div className="anim-fade-up" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, color: '#f1f5f9', letterSpacing: '-0.02em', margin: 0 }}>
-            Deployments
-          </h1>
-          <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0', fontFamily: 'var(--font-geist-mono)' }}>
-            {deployments.length > 0
-              ? `${deployments.length} saved fingerprint${deployments.length !== 1 ? 's' : ''}`
-              : 'No fingerprints saved yet'}
-          </p>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.03em', margin: 0 }}>Deployments</h1>
+          <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--text-3)', fontFamily: 'var(--font-geist-mono)' }}>Saved complexity fingerprints</p>
         </div>
         <Link href="/probe" className="btn-primary">
-          + Run Probe
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Run Probe
         </Link>
       </div>
 
-      {error && <div className="error-box">{error}</div>}
+      <div className="stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
+        <StatCard label="Total Deployments" value={deployments.length} sub="fingerprints saved" icon="⊞" />
+        <StatCard label="Unique Endpoints" value={uniqueEndpoints} sub="distinct URLs probed" icon="◎" />
+        <StatCard label="Top Complexity" value={topClass} sub="most frequent class" icon="∿" />
+      </div>
+
+      {error && <div className="error-box anim-fade-in">{error}</div>}
 
       {!error && deployments.length === 0 && (
-        <div className="card animate-fade-up" style={{ animationDelay: '60ms' }}>
+        <div className="card anim-fade-up">
           <div className="empty-state">
-            <div style={{ fontSize: 40, marginBottom: 12 }}>◎</div>
-            <p style={{ margin: '0 0 8px', color: '#64748b', fontSize: 14 }}>No deployments saved yet</p>
-            <p style={{ margin: '0 0 20px', color: '#334155', fontSize: 13 }}>
-              Run a probe against an HTTP endpoint and save the fingerprint.
-            </p>
-            <Link href="/probe" className="btn-primary">
-              Run your first probe →
-            </Link>
+            <div className="empty-icon">◎</div>
+            <div className="empty-title">No deployments yet</div>
+            <div className="empty-sub">Run a probe to fingerprint an HTTP endpoint and save the result.</div>
+            <Link href="/probe" className="btn-primary">Run your first probe →</Link>
           </div>
         </div>
       )}
 
       {deployments.length > 0 && (
-        <div className="card animate-fade-up" style={{ animationDelay: '60ms' }}>
+        <div className="card anim-fade-up" style={{ animationDelay: '80ms' }}>
+          <div className="card-header">
+            <span className="card-title">All Deployments</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-geist-mono)' }}>{deployments.length} total</span>
+          </div>
           <table className="data-table">
             <thead>
               <tr>
@@ -70,28 +82,15 @@ export default async function DashboardPage() {
             <tbody>
               {deployments.map(d => (
                 <tr key={d.ID}>
-                  <td style={{ color: '#475569' }}>{d.ID}</td>
-                  <td style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#e2e8f0' }} title={d.Endpoint}>
-                    {d.Endpoint}
-                  </td>
-                  <td style={{ color: '#94a3b8' }}>{d.Version}</td>
+                  <td style={{ color: 'var(--text-3)' }}>{d.ID}</td>
+                  <td style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }} title={d.Endpoint}>{d.Endpoint}</td>
+                  <td style={{ color: 'var(--text-2)' }}>{d.Version}</td>
                   <td><ComplexityBadge cls={d.Vector.ComplexityClass} /></td>
-                  <td style={{ color: '#94a3b8' }}>{d.Vector.ComplexityExponent.toFixed(2)}</td>
-                  <td style={{ color: d.Vector.ConcurrencyCliff === 0 ? '#334155' : '#fbbf24' }}>
-                    {d.Vector.ConcurrencyCliff === 0 ? '—' : d.Vector.ConcurrencyCliff}
-                  </td>
-                  <td style={{ color: d.Vector.BreakingPoint === 0 ? '#334155' : '#f87171' }}>
-                    {d.Vector.BreakingPoint === 0 ? '—' : d.Vector.BreakingPoint}
-                  </td>
-                  <td style={{ color: '#475569' }}>{new Date(d.CreatedAt).toLocaleDateString()}</td>
-                  <td>
-                    <Link
-                      href={`/deployments/${d.ID}`}
-                      style={{ color: '#6366f1', textDecoration: 'none', fontSize: 12, transition: 'color 0.15s' }}
-                    >
-                      view →
-                    </Link>
-                  </td>
+                  <td style={{ color: 'var(--text-2)' }}>{d.Vector.ComplexityExponent.toFixed(2)}</td>
+                  <td style={{ color: d.Vector.ConcurrencyCliff === 0 ? 'var(--border-mid)' : '#fbbf24' }}>{d.Vector.ConcurrencyCliff === 0 ? '—' : d.Vector.ConcurrencyCliff}</td>
+                  <td style={{ color: d.Vector.BreakingPoint === 0 ? 'var(--border-mid)' : '#f87171' }}>{d.Vector.BreakingPoint === 0 ? '—' : d.Vector.BreakingPoint}</td>
+                  <td style={{ color: 'var(--text-3)' }}>{new Date(d.CreatedAt).toLocaleDateString()}</td>
+                  <td><Link href={`/deployments/${d.ID}`} style={{ color: 'var(--accent-light)', textDecoration: 'none', fontSize: 12, transition: 'opacity 0.15s' }}>view →</Link></td>
                 </tr>
               ))}
             </tbody>

@@ -13,12 +13,12 @@ export function FitResultCard({ fit }: Props) {
   ] as const
 
   return (
-    <div className="card animate-fade-up" style={{ animationDelay: '60ms' }}>
+    <div className="card anim-fade-up" style={{ animationDelay: '60ms' }}>
       <div className="card-header">
         <span className="card-title">Curve Fit</span>
         <ComplexityBadge cls={fit.complexity_class} />
       </div>
-      <div style={{ padding: '4px 16px' }}>
+      <div style={{ padding: '4px 20px' }}>
         {rows.map(([label, value]) => (
           <div key={label} className="metric-row">
             <span className="metric-label">{label}</span>
@@ -27,36 +27,11 @@ export function FitResultCard({ fit }: Props) {
         ))}
       </div>
       {fit.fitted_curve && fit.fitted_curve.length > 0 && (
-        <details
-          style={{
-            borderTop: '1px solid #1e293b',
-          }}
-        >
-          <summary
-            style={{
-              padding: '10px 16px',
-              fontSize: 12,
-              color: '#475569',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-geist-mono)',
-              userSelect: 'none',
-              transition: 'color 0.15s',
-            }}
-          >
+        <details style={{ borderTop: '1px solid var(--border)' }}>
+          <summary style={{ padding: '10px 20px', fontSize: 12, color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-geist-mono)' }}>
             Raw curve data ({fit.fitted_curve.length} pts)
           </summary>
-          <pre
-            style={{
-              padding: '0 16px 12px',
-              fontSize: 11,
-              fontFamily: 'var(--font-geist-mono)',
-              color: '#64748b',
-              overflowX: 'auto',
-              maxHeight: 160,
-              margin: 0,
-              lineHeight: 1.6,
-            }}
-          >
+          <pre className="code-block" style={{ margin: '0 20px 16px', maxHeight: 140 }}>
             {fit.fitted_curve.map(([n, ms]) => `n=${n}  →  ${ms.toFixed(3)} ms`).join('\n')}
           </pre>
         </details>
