@@ -16,62 +16,87 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-base font-mono font-semibold text-zinc-900">Deployments</h1>
-        <Link
-          href="/probe"
-          className="px-3 py-1.5 text-xs font-mono bg-zinc-900 text-white rounded hover:bg-zinc-700"
-        >
+    <div className="animate-fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 600, color: '#f1f5f9', letterSpacing: '-0.02em', margin: 0 }}>
+            Deployments
+          </h1>
+          <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0', fontFamily: 'var(--font-geist-mono)' }}>
+            {deployments.length > 0
+              ? `${deployments.length} saved fingerprint${deployments.length !== 1 ? 's' : ''}`
+              : 'No fingerprints saved yet'}
+          </p>
+        </div>
+        <Link href="/probe" className="btn-primary">
           + Run Probe
         </Link>
       </div>
 
-      {error && (
-        <div className="text-xs font-mono text-red-600 bg-red-50 border border-red-200 px-4 py-3 rounded">
-          {error}
-        </div>
-      )}
+      {error && <div className="error-box">{error}</div>}
 
       {!error && deployments.length === 0 && (
-        <div className="text-xs font-mono text-zinc-400 py-8 text-center">
-          No deployments yet. Run a probe and save it.
+        <div className="card animate-fade-up" style={{ animationDelay: '60ms' }}>
+          <div className="empty-state">
+            <div style={{ fontSize: 40, marginBottom: 12 }}>◎</div>
+            <p style={{ margin: '0 0 8px', color: '#64748b', fontSize: 14 }}>No deployments saved yet</p>
+            <p style={{ margin: '0 0 20px', color: '#334155', fontSize: 13 }}>
+              Run a probe against an HTTP endpoint and save the fingerprint.
+            </p>
+            <Link href="/probe" className="btn-primary">
+              Run your first probe →
+            </Link>
+          </div>
         </div>
       )}
 
       {deployments.length > 0 && (
-        <table className="w-full text-xs font-mono border border-zinc-200 rounded-lg overflow-hidden">
-          <thead>
-            <tr className="bg-zinc-50 border-b border-zinc-200">
-              <th className="px-4 py-2 text-left text-zinc-500">ID</th>
-              <th className="px-4 py-2 text-left text-zinc-500">Endpoint</th>
-              <th className="px-4 py-2 text-left text-zinc-500">Version</th>
-              <th className="px-4 py-2 text-left text-zinc-500">Complexity</th>
-              <th className="px-4 py-2 text-left text-zinc-500">Exponent</th>
-              <th className="px-4 py-2 text-left text-zinc-500">Cliff</th>
-              <th className="px-4 py-2 text-left text-zinc-500">Breaking</th>
-              <th className="px-4 py-2 text-left text-zinc-500">Saved</th>
-              <th className="px-4 py-2 text-left text-zinc-500"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {deployments.map((d, i) => (
-              <tr key={d.ID} className={`border-b border-zinc-100 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}`}>
-                <td className="px-4 py-2 text-zinc-400">{d.ID}</td>
-                <td className="px-4 py-2 text-zinc-800 max-w-xs truncate" title={d.Endpoint}>{d.Endpoint}</td>
-                <td className="px-4 py-2 text-zinc-700">{d.Version}</td>
-                <td className="px-4 py-2"><ComplexityBadge cls={d.Vector.ComplexityClass} /></td>
-                <td className="px-4 py-2 text-zinc-600">{d.Vector.ComplexityExponent.toFixed(2)}</td>
-                <td className="px-4 py-2 text-zinc-600">{d.Vector.ConcurrencyCliff === 0 ? '—' : d.Vector.ConcurrencyCliff}</td>
-                <td className="px-4 py-2 text-zinc-600">{d.Vector.BreakingPoint === 0 ? '—' : d.Vector.BreakingPoint}</td>
-                <td className="px-4 py-2 text-zinc-400">{new Date(d.CreatedAt).toLocaleDateString()}</td>
-                <td className="px-4 py-2">
-                  <Link href={`/deployments/${d.ID}`} className="text-zinc-400 hover:text-zinc-700">view →</Link>
-                </td>
+        <div className="card animate-fade-up" style={{ animationDelay: '60ms' }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{ width: 48 }}>#</th>
+                <th>Endpoint</th>
+                <th>Version</th>
+                <th>Complexity</th>
+                <th>Exponent</th>
+                <th>Cliff</th>
+                <th>Breaking</th>
+                <th>Saved</th>
+                <th style={{ width: 64 }} />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {deployments.map(d => (
+                <tr key={d.ID}>
+                  <td style={{ color: '#475569' }}>{d.ID}</td>
+                  <td style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#e2e8f0' }} title={d.Endpoint}>
+                    {d.Endpoint}
+                  </td>
+                  <td style={{ color: '#94a3b8' }}>{d.Version}</td>
+                  <td><ComplexityBadge cls={d.Vector.ComplexityClass} /></td>
+                  <td style={{ color: '#94a3b8' }}>{d.Vector.ComplexityExponent.toFixed(2)}</td>
+                  <td style={{ color: d.Vector.ConcurrencyCliff === 0 ? '#334155' : '#fbbf24' }}>
+                    {d.Vector.ConcurrencyCliff === 0 ? '—' : d.Vector.ConcurrencyCliff}
+                  </td>
+                  <td style={{ color: d.Vector.BreakingPoint === 0 ? '#334155' : '#f87171' }}>
+                    {d.Vector.BreakingPoint === 0 ? '—' : d.Vector.BreakingPoint}
+                  </td>
+                  <td style={{ color: '#475569' }}>{new Date(d.CreatedAt).toLocaleDateString()}</td>
+                  <td>
+                    <Link
+                      href={`/deployments/${d.ID}`}
+                      style={{ color: '#6366f1', textDecoration: 'none', fontSize: 12, transition: 'color 0.15s' }}
+                    >
+                      view →
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
