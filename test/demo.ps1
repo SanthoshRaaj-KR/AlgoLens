@@ -39,7 +39,7 @@ $body = ConvertTo-Json @{
     input_sizes        = @(1,2,4,8,16,32)
     concurrency_levels = @(1,2)
     warmup_rounds      = 1
-    samples_per_step   = 3
+    samples_per_step   = 5
     step_warmup        = 0
     timeout_ms         = 3000
 }
@@ -76,7 +76,7 @@ $body2 = ConvertTo-Json @{
     input_sizes        = @(1,2,4,8,16,32)
     concurrency_levels = @(1,2)
     warmup_rounds      = 1
-    samples_per_step   = 3
+    samples_per_step   = 5
     step_warmup        = 0
     timeout_ms         = 5000
 }

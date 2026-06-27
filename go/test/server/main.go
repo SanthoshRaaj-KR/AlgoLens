@@ -39,11 +39,11 @@ func main() {
 		fmt.Fprintf(w, `{"complexity":"O(n)","n":%d}`, n)
 	})
 
-	// O(n²) — sleeps n² * 50µs (capped at 500ms for safety)
+	// O(n²) — 2ms base + n²×200µs, so even n=1 is well above OS noise (~2ms).
+	// Pattern: [2.2, 2.8, 5.2, 14.8, 52.2, 204.8]ms for n=[1,2,4,8,16,32].
 	mux.HandleFunc("/quadratic", func(w http.ResponseWriter, r *http.Request) {
 		n := parseN(r)
-		sleepUS := int64(n) * int64(n) * 50
-		sleep := time.Duration(sleepUS) * time.Microsecond
+		sleep := 2*time.Millisecond + time.Duration(int64(n)*int64(n)*200)*time.Microsecond
 		if sleep > 500*time.Millisecond {
 			sleep = 500 * time.Millisecond
 		}
