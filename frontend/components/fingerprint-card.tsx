@@ -8,7 +8,7 @@ const ROWS: { key: keyof FingerprintVector; label: string; fmt: (v: FingerprintV
   { key: 'MemoryGrowthRate',   label: 'Memory Growth Rate',  fmt: v => (v as number).toFixed(4) },
   { key: 'ConcurrencyCliff',   label: 'Concurrency Cliff',   fmt: v => (v as number) === 0 ? 'not detected' : String(v) },
   { key: 'BreakingPoint',      label: 'Breaking Point (n)',  fmt: v => (v as number) === 0 ? 'not reached'  : String(v) },
-  { key: 'Read/Write Ratio',   label: 'Read / Write Ratio',  fmt: v => (v as number).toFixed(2) },
+  { key: 'ReadWriteRatio',   label: 'Read / Write Ratio',  fmt: v => (v as number).toFixed(2) },
 ]
 
 const ACTUAL_KEYS: (keyof FingerprintVector)[] = [

@@ -102,6 +102,7 @@ export default function ProbePage() {
       const { id } = await api.saveDeployment({
         endpoint: form.endpoint,
         version: version.trim(),
+        name: version.trim(),
         notes: notes.trim() || undefined,
         fingerprint_vector: result.fingerprint_vector,
         fitted_curve: JSON.stringify(result.fit_result.fitted_curve),
@@ -109,6 +110,7 @@ export default function ProbePage() {
         headers_json: headersToJSON(),
         payload_template: form.payload_template || undefined,
         http_method: form.method,
+        mode: 'fingerprint',
       })
       setSavedId(id); setShowSave(false); setVersion(''); setNotes('')
     } catch (e) { setError((e as Error).message) }

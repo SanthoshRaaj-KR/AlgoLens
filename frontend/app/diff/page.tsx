@@ -82,6 +82,47 @@ export default function DiffPage() {
               </div>
             </div>
           )}
+          {result.sim_diff && (
+            <>
+              <div className="card anim-fade-in">
+                <div className="card-header"><span className="card-title">Simulation Summary</span></div>
+                <ul style={{ margin:0, padding:'10px 20px 14px', listStyle:'none', display:'flex', flexDirection:'column', gap:7 }}>
+                  {result.sim_diff.summary.map((s,i)=><li key={i} style={{ fontSize:13, color:'var(--text-2)', fontFamily:'var(--font-geist-mono)', paddingLeft:14, borderLeft:'2px solid var(--border-mid)' }}>{s}</li>)}
+                </ul>
+                <div style={{ padding:'0 20px 16px', display:'flex', gap:24 }}>
+                  {[
+                    { label:'Success Rate', value:`${(result.sim_diff.success_rate_delta*100).toFixed(0)}%`, up: result.sim_diff.success_rate_delta < 0 },
+                    { label:'Avg Turns', value:`${result.sim_diff.avg_turns_delta > 0 ? '+' : ''}${result.sim_diff.avg_turns_delta.toFixed(1)}`, up: result.sim_diff.avg_turns_delta > 0 },
+                    { label:'Avg Latency', value:`${result.sim_diff.avg_latency_delta_ms > 0 ? '+' : ''}${result.sim_diff.avg_latency_delta_ms.toFixed(0)}ms`, up: result.sim_diff.avg_latency_delta_ms > 0 },
+                  ].map(m => (
+                    <div key={m.label} style={{ fontSize:12, fontFamily:'var(--font-geist-mono)' }}>
+                      <div style={{ color:'var(--text-3)', marginBottom:2 }}>{m.label}</div>
+                      <div style={{ fontWeight:700, color: Math.abs(parseFloat(m.value)) < 0.1 ? 'var(--text-2)' : m.up ? '#f87171' : '#4ade80' }}>{m.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {result.sim_diff.endpoint_deltas.length > 0 && (
+                <div className="card anim-fade-in">
+                  <div className="card-header"><span className="card-title">Endpoint Latency Heatmap</span></div>
+                  <table className="data-table">
+                    <thead><tr><th>Endpoint</th><th style={{textAlign:'right'}}>A (ms)</th><th style={{textAlign:'right'}}>B (ms)</th><th style={{textAlign:'right'}}>Delta</th><th style={{textAlign:'center',width:36}}/></tr></thead>
+                    <tbody>
+                      {result.sim_diff.endpoint_deltas.map((ep,i)=>(
+                        <tr key={i}>
+                          <td style={{ color:'var(--text)', fontFamily:'var(--font-geist-mono)' }}>{ep.endpoint}</td>
+                          <td style={{ textAlign:'right', color:'var(--text-2)' }}>{ep.avg_latency_a_ms.toFixed(0)}</td>
+                          <td style={{ textAlign:'right', color:'var(--text-2)' }}>{ep.avg_latency_b_ms.toFixed(0)}</td>
+                          <td style={{ textAlign:'right', fontWeight:600, color:ep.direction==='up'?'#f87171':ep.direction==='down'?'#34d399':'var(--text-3)' }}>{ep.delta_ms>0?'+':''}{ep.delta_ms.toFixed(0)}ms</td>
+                          <td style={{ textAlign:'center' }}>{ep.direction==='up'?<span style={{color:'#f87171'}}>↑</span>:ep.direction==='down'?<span style={{color:'#34d399'}}>↓</span>:<span style={{color:'var(--text-3)'}}>—</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

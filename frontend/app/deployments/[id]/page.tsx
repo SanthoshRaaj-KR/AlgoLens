@@ -92,7 +92,7 @@ export default async function DeploymentPage({ params }: { params: Promise<{ id:
       <details className="card anim-fade-up" style={{ animationDelay: '140ms', overflow: 'visible' }}>
         <summary style={{ padding: '14px 20px', cursor: 'pointer', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'var(--text-3)', fontFamily: 'var(--font-geist-mono)', userSelect: 'none' }}>Raw JSON</summary>
         <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {(['fitted_curve', d.FittedCurveJSON] as const) && null}
+          {/* raw JSON section */}
           {[['fitted_curve', d.FittedCurveJSON], ['sweep_result', d.SweepResultJSON]].map(([label, json]) => (
             <div key={label}>
               <p style={{ fontSize: 10, color: 'var(--text-3)', margin: '0 0 8px', fontFamily: 'var(--font-geist-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>{label}</p>
