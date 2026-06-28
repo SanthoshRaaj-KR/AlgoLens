@@ -2,223 +2,269 @@
 
 ---
 
-## Phase 1 — Foundation & Scaffold
+## What Already Exists (Do Not Rebuild)
 
-**Goal:** Skeleton compiles, services start, talk to each other.
+The following is already built and working:
+- Go probe engine: `ProbeStep`, `Sweep`, `ProbeConfig`, adaptive settling, HDR histogram
+- Python sidecar: `/fit` (curve fitting), `/similarity` (cosine search)
+- Go REST API: `POST /api/probe`, `POST /api/deployments`, `GET /api/diff`, `GET /api/timeline`, `POST /api/search`
+- Postgres store with `deployments` table
+- React frontend (basic UI exists, needs revamp)
+
+Every phase below builds on top of this. Nothing already working gets removed.
+
+---
+
+## Phase 1 — Stress / Concurrency Test (Go + SSE)
+
+**Goal:** Hit one endpoint, ramp concurrency, plot the curve live. No AI.
+
+### What to build
+- New Go route: `POST /api/stress`
+  - Input: `{endpoint, method, headers, body, concurrency_steps: [1,5,10,25,50,100], timeout_ms}`
+  - No `{{n}}` substitution. Static body, real headers, real API key.
+  - Loops through each concurrency level: fires that many goroutines simultaneously, collects p50/p95/p99 and error rate
+  - Streams each completed step as an SSE event before moving to the next
+- New Go route: `GET /api/stress/stream` (SSE endpoint)
+  - Client connects, receives one JSON event per completed concurrency step:
+    `{concurrency, p50, p95, p99, error_rate, errors, total}`
+  - Closes stream when all steps complete or breaking point hit
+- Breaking point detection: when error_rate >= 0.5 at any step, emit a `breaking_point` event and stop
+- Reuse existing `ProbeStep` — strip out `{{n}}` substitution, pass static body directly
+
+### Exit criterion
+Point it at a local test server, run a stress test with 5 concurrency steps, see SSE events arrive in the terminal one by one, verify breaking point detection fires when error rate crosses 50%.
+
+---
+
+## Phase 2 — Deployment Storage Revamp
+
+**Goal:** Every saved run has a user-defined name, tag, and mode label. Supports all 4 modes.
+
+### What to build
+- Migrate `deployments` table: add columns `name TEXT`, `tag TEXT`, `mode TEXT`, `session_logs JSONB`, `summary JSONB`
+- Update `SaveDeployment` in Go store to accept these new fields
+- Update `POST /api/deployments` handler to accept and store them
+- `GET /api/deployments` returns the new fields
+- Enforce: `name` is required. No unnamed deployments.
+
+### Exit criterion
+Save two deployments with different names and modes via the API. Query them back. Both have name, tag, mode, created_at correctly stored.
+
+---
+
+## Phase 3 — Python MCP Server Scaffold
+
+**Goal:** Python FastAPI server gains an MCP endpoint and can talk to Claude with tool use.
+
+### What to build
+- New Python module: `agent/mcp.py`
+  - Defines one Claude tool: `call_endpoint(method, url, headers, body) → {status, body, latency_ms}`
+  - The tool implementation calls the Go probe engine at `http://localhost:8080/internal/probe-once`
+- New Go internal route: `POST /internal/probe-once`
+  - Fires exactly one HTTP request to the given URL with given method/headers/body
+  - Returns `{status_code, body, latency_ms, error}`
+  - Not exposed via CORS — internal only, Python calls it
+- New Python module: `agent/session.py`
+  - `run_session(spec, goal, plan, session_id)` — runs one Claude conversation loop using the MCP tool
+  - Claude reads the spec + plan, calls `call_endpoint` repeatedly until goal achieved or turn limit hit
+  - Yields SSE events: `{session_id, type: "request"|"response"|"reasoning"|"done", data}`
+- Anthropic SDK wired up: reads `ANTHROPIC_API_KEY` from `.env`
+
+### Exit criterion
+Send a manually crafted plan to `run_session`, watch Claude call `call_endpoint` at least once against a local server, receive SSE events in the terminal.
+
+---
+
+## Phase 4 — Swagger Spec Ingestion
+
+**Goal:** Python parses a Swagger/OpenAPI spec and gives Claude a clean API map.
+
+### What to build
+- New Python module: `agent/spec.py`
+  - `load_spec(url_or_path)` — fetches spec from URL or reads from file, returns parsed dict
+  - `summarise_spec(spec)` — extracts: list of endpoints, method per endpoint, required params, response shapes, auth requirements
+  - Returns a structured summary Claude can read as a system prompt context block
+- New Python route: `POST /spec/validate`
+  - Input: `{spec_url, base_url, headers}`
+  - Fetches spec, checks base URL is reachable, checks auth header works against the first available endpoint
+  - Returns `{valid: bool, endpoints: [...], errors: [...]}`
+- This is the pre-run validation step — called before any agent is created
+
+### Exit criterion
+Post a real public Swagger spec URL to `/spec/validate`. Get back a list of discovered endpoints and a valid/invalid flag. Deliberately pass a bad auth header and get an error back.
+
+---
+
+## Phase 5 — Agent Planning Phase
+
+**Goal:** All N agents collectively plan before anything executes.
+
+### What to build
+- New Python route: `POST /agent/plan`
+  - Input: `{spec_url, base_url, headers, goal, n_agents}`
+  - Calls Claude once with the full spec summary + goal + n_agents
+  - Claude returns a JSON array of N agent plans:
+    ```json
+    [
+      {
+        "agent_id": 1,
+        "persona": "power user",
+        "input_slice": "large payloads (500-2000 items)",
+        "action_plan": ["POST /auth/login", "POST /search with limit=500", "GET /results/{id}"],
+        "success_condition": "receives non-empty results array"
+      },
+      ...
+    ]
+    ```
+  - No two agents overlap in input slice
+  - Returns plans to the frontend for user review before execution
+- Plan validation: check all endpoints in each plan exist in the spec
+- User can edit plans before approving
+
+### Exit criterion
+Call `/agent/plan` with a spec and goal of "test the full search flow with 3 agents." Get back 3 non-overlapping agent plans with distinct personas and action plans. Plans reference only endpoints that exist in the spec.
+
+---
+
+## Phase 6 — Agent Execution + Live SSE Stream
+
+**Goal:** Run N agents concurrently, stream all events to frontend live.
+
+### What to build
+- New Python route: `POST /agent/run` (starts execution, returns `session_group_id`)
+- New Python route: `GET /agent/stream/{session_group_id}` (SSE stream)
+  - Spawns N asyncio tasks, one per agent
+  - Each task runs `session.run_session()` with that agent's plan
+  - All events from all agents multiplexed onto one SSE stream with `session_id` field
+  - SSE event format:
+    ```
+    data: {"session_id": 2, "type": "request", "method": "POST", "url": "/search", "body": {...}, "t": 1234}
+    data: {"session_id": 2, "type": "response", "status": 200, "body": {...}, "latency_ms": 43}
+    data: {"session_id": 2, "type": "reasoning", "text": "Got results, now fetching first item..."}
+    data: {"session_id": 2, "type": "done", "success": true, "turns": 5, "total_latency_ms": 312}
+    data: {"type": "group_done", "success_count": 5, "fail_count": 1}
+    ```
+- Store full session logs in Postgres: each agent's complete conversation saved as JSONB
+- Reconnection: if client disconnects and reconnects with the same `session_group_id`, replay stored events
+
+### Exit criterion
+Run 3 agents against a local multi-endpoint test server. Watch all 3 SSE streams interleave in the terminal. Verify all 3 sessions are stored in Postgres after completion. Disconnect and reconnect — get the replay.
+
+---
+
+## Phase 7 — Deployment Comparison
+
+**Goal:** Pick two named deployments, see exactly what changed.
+
+### What to build
+- `GET /api/diff?a=:id&b=:id` already exists — extend it:
+  - Add per-endpoint latency delta (which specific API call got slower?)
+  - Add agent success rate comparison
+  - Add turn count comparison (did achieving the goal take more turns?)
+- New diff fields in response: `{endpoint_deltas: [{endpoint, avg_latency_a, avg_latency_b, delta}], success_rate_delta, avg_turns_delta}`
+- Bottleneck heatmap data: for simulation mode, return per-endpoint average latency across all agents, for both deployments
+
+### Exit criterion
+Save two simulation runs with intentionally different latency profiles. Call `/api/diff`. Get back the per-endpoint deltas with the correct slower endpoint identified.
+
+---
+
+## Phase 8 — React Frontend Revamp
+
+**Goal:** Clean, demoable UI. Four modes accessible from a sidebar. Everything live.
+
+### Layout
+- Sidebar: mode selector (Stress Test | Simulation | Compare | Search)
+- Each mode is a full-page panel
+
+### Mode 1 — Stress Test Panel
+- Form: endpoint, method, headers, body, concurrency steps
+- "Run" button → connects to SSE stream
+- Live chart (Recharts): x-axis = concurrency, y-axis = latency (ms), 3 lines for p50/p95/p99
+- Error rate bar below the chart
+- Breaking point marker on the chart when detected
+- "Save as Deployment" button after run completes
+
+### Mode 2 — Simulation Panel
+- Step 1: Swagger spec URL + base URL + headers/API key
+- "Validate" button → calls `/spec/validate`, shows discovered endpoints
+- Step 2: Goal input + number of agents
+- "Generate Plans" → calls `/agent/plan`, shows N agent cards with their personas and action plans
+- User can review/edit plans
+- "Run Simulation" → starts execution
+- N live panels (cards), each showing real-time conversation stream for one agent
+- Dropdown to expand any single agent to full-screen
+- "Save as Deployment" after all agents complete
+
+### Mode 3 — Compare Panel
+- Two deployment selectors (searchable dropdown by name/tag)
+- Side-by-side metric cards with delta indicators (↑ red, ↓ green, = grey)
+- Latency curve overlay chart (two lines, one per deployment)
+- Per-endpoint latency heatmap (simulation mode deployments)
+- Plain English summary
+
+### Mode 4 — Search Panel
+- "Use latest run" or select a specific deployment
+- "Find Similar" button → calls `/api/search`
+- Ranked result cards: name, tag, date, similarity percentage
+- Colour coding: > 90% = red flag, 70–90% = yellow, < 70% = neutral
+
+### Shared components
+- Deployment save modal: name (required), tag (optional), notes
+- SSE connection hook: handles connect, reconnect, event parsing
+- Live status indicator: "3/6 agents complete"
+
+### Exit criterion
+Full demo run: validate a spec → generate plans → run 3 agents → watch live panels → save deployment → compare to a previous run → similarity search finds it. No console errors. No broken states.
+
+---
+
+## Phase 9 — Polish + Integration
+
+**Goal:** Production-quality feel. No rough edges.
 
 ### Tasks
-- [ ] Init Go module (`go.mod`) — `github.com/user/algolens`
-- [ ] Init Python venv + `requirements.txt` (fastapi, uvicorn, scipy, numpy)
-- [ ] Scaffold React app (`vite` + TypeScript)
-- [ ] Define directory structure:
-  ```
-  algolens/
-  ├── go/
-  │   ├── cmd/server/main.go
-  │   ├── internal/
-  │   │   ├── probe/
-  │   │   ├── fingerprint/
-  │   │   ├── store/
-  │   │   └── api/
-  ├── python/
-  │   ├── main.py          ← FastAPI sidecar
-  │   ├── curve_fit.py
-  │   └── similarity.py
-  ├── frontend/
-  │   └── src/
-  ├── schema.sql           ← SQLite schema
-  └── AlgoLens.md
-  ```
-- [ ] SQLite schema: `deployments` table (id, endpoint, version, notes, timestamp, fingerprint_vector JSON)
-- [ ] Go: thin HTTP client wrapper to call Python sidecar
-- [ ] Python: `/health` endpoint — Go pings it at startup
-- [ ] `Makefile` with `make dev` that starts Go + Python sidecar + frontend together
+- Pre-run validation gate: "Run" buttons disabled until all required fields are filled
+- Error surfaces as toast notifications (not silent failures)
+- Loading skeletons for all async operations
+- Go server waits for Python sidecar health before accepting requests (startup order)
+- CORS locked down for production (not wildcard `*`)
+- Postgres connection pooling configured correctly
+- `.env.example` with all required variables documented
+- README: quickstart in 5 commands
+- End-to-end smoke test script: stress test + simulation + save + compare + search
 
-**Exit criterion:** `make dev` boots all three; Go hits Python `/health` and logs OK.
-
----
-
-## Phase 2 — Go Probing Harness
-
-**Goal:** Fire real HTTP requests against a target endpoint and collect raw latency samples.
-
-### Tasks
-- [ ] `ProbeConfig` struct: `{Endpoint, Method, PayloadTemplate, Variable, InputSizes []int, Concurrency []int, WarmupRounds int}`
-- [ ] Single probe point: given `(n, concurrency)`, spin up `concurrency` goroutines via `sync.WaitGroup`, each fires one request with `n` substituted into the payload, sends `(latency_ns, status_code, error)` down a result channel
-- [ ] Channel drain loop: collect all results, discard errors/non-200s, feed good latencies into an HDR histogram instance
-- [ ] Extract p50, p95, p99 from the histogram after all goroutines complete
-- [ ] Return a `ProbePoint{N int, Concurrency int, P50, P95, P99 float64}` struct
-- [ ] Payload templating: support `{{n}}` substitution in JSON payload strings
-
-**Exit criterion:** Point a `ProbeConfig` at a local test server; get back a `ProbePoint` with three latency percentiles. Verified with a unit test against a real HTTP test server (`httptest.NewServer`).
-
----
-
-## Phase 3 — Concurrency Sweep Controller
-
-**Goal:** Drive all n × concurrency combinations and return a full latency matrix.
-
-### Tasks
-- [ ] `SweepController`: iterates over `InputSizes × ConcurrencyLevels`, calls the probing harness for each combination
-- [ ] **Adaptive settling delay between steps**: after each step sleep `max(300ms, 3 × p99_of_last_step)` — see LOGIC.md §3d for full rationale. Prevents bleed-through noise and false complexity classification.
-- [ ] **Per-step warmup**: fire 2 discarded requests at the start of each new n value to re-warm CPU scaling and OS scheduler after the settle period
-- [ ] Configurable parallelism: run multiple probe points concurrently (bounded by a semaphore to avoid hammering the target)
-- [ ] Result aggregation: collect all `ProbePoint` results into a `SweepResult{Points []ProbePoint}` struct
-- [ ] Per-combination retry with exponential backoff on connection errors (not on 4xx/5xx — those are real data)
-- [ ] Probe duration estimate: given the sweep config, log estimated time before starting (must account for adaptive settle times in the estimate)
-
-**Exit criterion:** Full sweep runs against a local test server with 3 input sizes × 3 concurrency levels = 9 probe points returned correctly. Verified that p50 values are stable (< 10% variance) across two identical sweeps.
-
----
-
-## Phase 4 — Python Math Sidecar
-
-**Goal:** FastAPI service that takes raw latency data and returns curve fit + similarity scores.
-
-### `/fit` endpoint
-- [ ] Input: `{n_values: [10, 100, 1000], latencies: [p50_list]}` (use p50 for curve fitting)
-- [ ] Try fitting to each complexity class using SciPy `curve_fit` (least squares):
-  - O(1): `f(n) = c`
-  - O(log n): `f(n) = a * log(n) + b`
-  - O(n): `f(n) = a * n + b`
-  - O(n log n): `f(n) = a * n * log(n) + b`
-  - O(n²): `f(n) = a * n² + b`
-- [ ] Select best fit by lowest residual (R² score)
-- [ ] Return: `{complexity_class: "O(n²)", exponent: 2.0, coefficient: 0.0023, r_squared: 0.97, fitted_curve: [[n, predicted_latency], ...]}`
-
-### `/similarity` endpoint
-- [ ] Input: `{query_vector: [...], stored_vectors: [[...], ...]}`
-- [ ] Compute cosine similarity between `query_vector` and each stored vector using NumPy
-- [ ] Return ranked list: `[{index: int, score: float}]`
-
-**Exit criterion:** POST a synthetic latency array that follows `O(n²)` exactly → response says `O(n²)` with R² > 0.99. Similarity endpoint returns 1.0 for identical vectors.
-
----
-
-## Phase 5 — Fingerprint Vector Builder + SQLite Store
-
-**Goal:** Go builds the fingerprint vector from sweep + fit results and persists it only on explicit user action.
-
-### Fingerprint vector
-- [ ] Go calls Python `/fit` with the sweep's p50 latencies
-- [ ] Go computes remaining signals directly:
-  - **Concurrency cliff**: find the concurrency level where p99 jumps > 2× relative to p99 at concurrency=1
-  - **Breaking point**: extrapolate from the fitted curve where p99 crosses a configured threshold (e.g. 1000ms)
-  - **Read/write ratio**: derived from response size distribution across probe points (placeholder: 0.5 for now, expand later)
-- [ ] Assemble `FingerprintVector{ComplexityExponent, MemoryGrowthRate, ConcurrencyCliff, BreakingPoint, ReadWriteRatio float64}`
-- [ ] `store` package: SQLite via `mattn/go-sqlite3`
-  - `SaveDeployment(endpoint, version, notes string, fp FingerprintVector) (int64, error)`
-  - `ListDeployments(endpoint string) ([]Deployment, error)`
-  - `GetDeployment(id int64) (Deployment, error)`
-- [ ] **Critical:** no auto-save. The store is only called when the user explicitly triggers "Save as Deployment" via the API.
-
-**Exit criterion:** Run a full sweep → call `/fit` → build vector → manually call `SaveDeployment` → query SQLite → row exists with correct values.
-
----
-
-## Phase 6 — Go REST API
-
-**Goal:** Full API surface the frontend talks to.
-
-### Endpoints
-- [ ] `POST /api/probe` — runs a sweep, returns `SweepResult` + `FingerprintVector`. **Does not save to DB.**
-- [ ] `POST /api/deployments` — saves the current fingerprint. Body: `{endpoint, version, notes, fingerprint_vector}`
-- [ ] `GET /api/deployments?endpoint=...` — list all saved deployments for an endpoint
-- [ ] `GET /api/deployments/:id` — get a single deployment
-- [ ] `GET /api/diff?a=:id&b=:id` — returns both deployments + delta report (diff of all vector fields, complexity class change, plain-English summary)
-- [ ] `POST /api/search` — body: `{fingerprint_vector}`, calls Python `/similarity` with all stored vectors, returns ranked results with deployment metadata
-- [ ] `GET /api/timeline?endpoint=...` — returns all deployments for an endpoint sorted chronologically, formatted for the timeline chart
-
-### Plain-English diff summary (built in Go, no AI)
-- [ ] Rule-based: compare complexity class — if changed, emit "Complexity degraded from O(n log n) to O(n²)"
-- [ ] Compare concurrency cliff delta — if dropped > 20%, emit "Concurrency ceiling dropped by X%"
-- [ ] Compare breaking point — if dropped, emit "Breaking point fell from Xk to Yk records"
-
-**Exit criterion:** All endpoints return correct shapes; diff endpoint correctly describes a known regression between two manually-inserted rows.
-
----
-
-## Phase 7 — React Frontend Core
-
-**Goal:** Probe config → live results working end-to-end.
-
-### Components
-- [ ] `ProbeConfigForm` — endpoint URL, method, payload template with `{{n}}` placeholder, input sizes (comma-separated), concurrency levels (comma-separated), warmup toggle
-- [ ] `RunProbeButton` — calls `POST /api/probe`, shows loading state
-- [ ] `SweepResultsPanel` — shows the latency matrix as a table (rows = input size, cols = concurrency, cells = p50/p95/p99)
-- [ ] `ComplexityBadge` — displays the fitted complexity class with color coding (green = O(n) or better, yellow = O(n log n), red = O(n²))
-- [ ] `FingerprintVectorCard` — shows all 5 vector components with labels
-- [ ] `SaveDeploymentModal` — version tag input, notes textarea, "Save" button that calls `POST /api/deployments`
-- [ ] State: probe results held in component state (not persisted) until user saves
-
-**Exit criterion:** Run a probe from the UI, see the latency matrix and complexity class, save as a deployment — row appears in the DB.
-
----
-
-## Phase 8 — Version Diff View
-
-**Goal:** Select two deployments and see what changed.
-
-### Components
-- [ ] `DeploymentSelector` — two dropdowns filtered by endpoint, shows version + date
-- [ ] `CurveOverlayChart` (Recharts) — plots both fitted curves on the same chart; different colors for v1 and v2; x-axis = input size, y-axis = latency (ms)
-- [ ] `DeltaReport` — table of all fingerprint fields with: v1 value, v2 value, delta, direction indicator (↑ ↓ =)
-- [ ] `PlainEnglishSummary` — renders the plain-English diff string from the API
-- [ ] Highlight regressions in red, improvements in green, neutral in grey
-
-**Exit criterion:** Select two saved deployments with intentionally different fingerprints; chart shows two distinct curves; delta report correctly identifies the changed fields.
-
----
-
-## Phase 9 — Reverse Search + Drift Timeline
-
-**Goal:** "Which past version does this look like?" + chronological drift chart.
-
-### Reverse Search
-- [ ] `SearchPanel` — runs a probe (or uses cached probe result), sends fingerprint vector to `POST /api/search`
-- [ ] `SimilarityResultsList` — ranked list: version tag, date, similarity score (%), any saved notes; top result highlighted
-- [ ] Score color coding: > 90% = strong match (red warning), 70–90% = moderate, < 70% = weak
-
-### Drift Timeline
-- [ ] `DriftTimeline` (Recharts) — line chart with time on x-axis, one line per fingerprint dimension (complexity exponent, concurrency cliff, breaking point)
-- [ ] Complexity class changes marked as vertical annotations on the chart
-- [ ] Hover tooltip shows full deployment details
-
-**Exit criterion:** With 4+ saved deployments, timeline shows correct chronological evolution; similarity search correctly ranks a near-duplicate vector as the top hit.
-
----
-
-## Phase 10 — Integration & Polish
-
-**Goal:** Everything works together; no rough edges.
-
-### Tasks
-- [ ] Error handling: API errors surface as toasts in the frontend (not silent failures)
-- [ ] Loading skeletons for all async operations
-- [ ] Graceful sidecar failure: if Python sidecar is down, Go API returns 503 with a clear message
-- [ ] `make dev` starts everything in order (sidecar first, then Go waits for sidecar health, then frontend)
-- [ ] Input validation: URL format, non-empty payload, at least 3 input sizes (needed for curve fitting to be meaningful)
-- [ ] SQLite WAL mode enabled (prevents read/write contention)
-- [ ] README with quickstart (5 commands to run the full stack)
-- [ ] End-to-end smoke test: script that probes a local test server, saves two deployments with different behavior, diffs them, runs similarity search
-
-**Exit criterion:** Follow the README on a clean machine → full E2E smoke test passes.
+### Exit criterion
+Follow the README on a clean machine. Full smoke test passes. Demo video recorded.
 
 ---
 
 ## Build Order Summary
 
 ```
-Phase 1  →  Foundation & Scaffold
-Phase 2  →  Go Probing Harness (single probe point)
-Phase 3  →  Go Concurrency Sweep (n × concurrency driver)
-Phase 4  →  Python Math Sidecar (curve fit + similarity)
-Phase 5  →  Fingerprint Vector Builder + SQLite Store
-Phase 6  →  Go REST API (all endpoints)
-Phase 7  →  React Core (probe → results → save)
-Phase 8  →  Version Diff View
-Phase 9  →  Reverse Search + Drift Timeline
-Phase 10 →  Integration & Polish
+Phase 1  →  Stress / Concurrency Test (Go SSE)          [extends existing probe]
+Phase 2  →  Deployment Storage Revamp (name + JSONB)     [extends existing store]
+Phase 3  →  Python MCP Server Scaffold                   [new]
+Phase 4  →  Swagger Spec Ingestion + Validation          [new]
+Phase 5  →  Agent Planning Phase                         [new]
+Phase 6  →  Agent Execution + Live SSE Stream            [new]
+Phase 7  →  Deployment Comparison (extended diff)        [extends existing diff]
+Phase 8  →  React Frontend Revamp (all 4 modes)          [revamp existing frontend]
+Phase 9  →  Polish + Integration                         [final]
 ```
 
-Each phase has a clear exit criterion. No phase starts until the previous one passes its criterion.
+Each phase has one clear exit criterion. Nothing starts until the previous criterion passes.
+
+---
+
+## Tech Stack Reference
+
+| Layer | Tech | Version |
+|---|---|---|
+| Go backend | net/http, hdrhistogram | Go 1.22+ |
+| Python backend | FastAPI, Anthropic SDK, SciPy, NumPy | Python 3.11+ |
+| Frontend | Next.js, Recharts, Tailwind | Node 20+ |
+| Database | PostgreSQL | 15+ |
+| AI | Claude (via Anthropic API) | claude-sonnet-4-6 |
+| Streaming | SSE (server-sent events) | — |

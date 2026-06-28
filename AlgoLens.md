@@ -1,242 +1,242 @@
-# AlgoLens — Behavioral Complexity Fingerprinting for HTTP Endpoints
+# AlgoLens — API Behavior Testing Platform
 
-> Unit tests catch wrong answers. Load tests catch slow systems. AlgoLens catches the thing in between — when your code is still correct, still passing tests, but its algorithmic behavior silently degraded between deployments.
+> Unit tests catch wrong answers. Load tests catch slow systems. AlgoLens catches what both miss — how your API actually behaves under real pressure, across deployments, with intelligent simulated users.
 
 ---
 
 ## The Problem
 
-Every engineering team has three layers of safety:
+Every engineering team tests their code. Nobody tests how their API *behaves*.
 
-- **Unit tests** — does the code return the right answer?
-- **Integration tests** — do the services talk to each other correctly?
+- **Unit tests** — does the function return the right value?
+- **Integration tests** — do the services talk to each other?
 - **Load tests** — can the system handle traffic?
 
-**None of these catch algorithmic regression.**
+None of these answer:
+- What happens when 50 users hit this endpoint at the same time?
+- Did the behavior change after last week's deploy?
+- Can this endpoint handle a real multi-turn conversation flow?
+- What complexity class is this endpoint — O(n) or O(n²)?
 
-A developer refactors a search function. All 47 unit tests pass. Staging looks fine. Deploys to prod. Three days later at 3am, load spikes, the endpoint crawls, PagerDuty fires. Postmortem says *"the refactor introduced an O(n²) loop."*
-
-Nobody caught it — because no tool was watching the **shape** of the behavior. Only the outcome.
-
-### The Three Real-World Scenarios This Hits
-
-**Scenario 1 — The Innocent Refactor**
-Dev cleans up a database query. Accidentally changes a single indexed lookup into a full table scan. O(1) → O(n). Passes all tests. AlgoLens fingerprint comparison immediately flags: *"this endpoint's complexity class changed after this deployment."*
-
-**Scenario 2 — The Third Party Regression**
-You depend on an external API. They push an update silently. Your code didn't change. But their endpoint's fingerprint changed — it used to scale linearly, now it doesn't. You know before your users do.
-
-**Scenario 3 — The Gradual Degradation**
-Nobody refactored anything. But over 6 months, data volume grew 10x. An endpoint that was fine at 1k records is now being called with 50k. The fingerprint drift over time shows exactly when it crossed from acceptable to dangerous.
+AlgoLens answers all of these. One tool, four modes.
 
 ---
 
-## The Core Idea
+## The Four Modes
 
-Algorithms leave behavioral fingerprints.
+### Mode 1 — Stress / Concurrency Test
 
-When you run an endpoint against increasing input sizes and concurrency levels, the way its latency and memory scale **is** a fingerprint. An O(n²) endpoint doesn't just feel slow — it produces a specific curve shape that is mathematically distinct from O(n log n) or O(n).
+The simplest mode. No AI. Pure measurement.
 
-**AlgoLens captures that curve, stores it per deployment, and compares it across versions.**
+User provides:
+- Endpoint URL
+- HTTP method
+- Headers and API key
+- Request body (static)
+- Number of concurrent requests to ramp through
 
-The question is never "is it slow right now." The question is: **"did the shape change?"**
+AlgoLens hits the endpoint with progressively increasing concurrency, plots the latency curve live, and finds exactly where the server breaks. Output: p50/p95/p99 per concurrency level, error rate curve, the breaking point.
 
----
-
-## Workflow
-
-### Step 1 — Point AlgoLens at an Endpoint
-
-The user provides:
-```
-endpoint:  POST /api/search
-payload:   { "query": "...", "limit": <n> }
-variable:  limit (this is what scales)
-range:     n = [10, 50, 100, 500, 1000, 5000, 10000]
-concurrency levels: [1, 10, 50, 100, 200]
-```
-
-AlgoLens hits the endpoint across all combinations of input size and concurrency. This is the **probing sweep.**
-
-### Step 2 — Extract the Fingerprint
-
-From the sweep results, AlgoLens extracts:
-
-```
-latency curve:        O(n²)         ← fitted from time vs input size
-memory growth:        linear         ← from response size + allocation signals
-concurrency cliff:    ~150 req/s    ← where latency starts spiking non-linearly
-breaking point:       ~8k records   ← extrapolated from curve fit
-syscall pattern:      read-heavy    ← from response time distribution shape
-```
-
-This vector is the **behavioral fingerprint** of the endpoint at this moment.
-
-### Step 3 — Mark as a New Deployment (Manual Trigger)
-
-> **Critical design decision:** AlgoLens does not auto-store every run.
-
-Every time you probe an endpoint, the result is shown to you in the UI. It is **not** stored in the database automatically.
-
-When you are ready — after a real deployment, a significant refactor, or a version release — you explicitly click **"Save as Deployment"** in the UI and tag it:
-
-```
-deployment:   v2.3.1
-date:         2026-06-25
-endpoint:     POST /api/search
-notes:        refactored search indexing logic
-```
-
-Only at this point does the fingerprint get written to the database. This keeps the history clean — one fingerprint per deployment, not one per run.
-
-### Step 4 — Compare Across Deployments
-
-Once you have two or more saved deployments, AlgoLens can:
-
-- **Diff two specific versions** — side by side curve comparison, delta in complexity class, shift in breaking point
-- **Find the closest deployment to current behavior** — using vector similarity search across all stored fingerprints, identify which past version this endpoint is behaving most like
-- **Show drift over time** — plot the fingerprint vector across all deployments chronologically, surface when and where behavior shifted
-
-### Step 5 — Surface the Insight
-
-The UI presents:
-
-```
-ALERT: Behavioral regression detected
-
-  v2.3.0  →  v2.3.1
-
-  Complexity:      O(n log n)  →  O(n²)       ⚠️ degraded
-  Concurrency cliff: 300 req/s  →  150 req/s   ⚠️ halved
-  Breaking point:  15k records →  8k records   ⚠️ dropped
-
-  Closest historical match: v1.8.2 (92% similar)
-  That version was rolled back on 2025-11-14 for performance issues.
-```
+**Who uses it:** Any developer who wants to know how many concurrent users their endpoint can handle before it degrades.
 
 ---
 
-## Features
+### Mode 2 — Agentic Simulation
 
-### 1. Behavioral Probing Engine
-- Hits the endpoint with configurable input sizes and concurrency levels
-- Supports REST endpoints (POST/GET with variable payload)
-- Extracts latency percentiles (p50, p95, p99) at each probe point
-- Fits the curve to known complexity classes using least-squares regression
+The headline feature. Claude simulates real users interacting with your API.
 
-### 2. Fingerprint Extraction
-- Time complexity class (O(1), O(log n), O(n), O(n log n), O(n²))
-- Memory growth rate
-- Concurrency cliff detection
-- Breaking point extrapolation
-- Read/write pattern from response distribution
+User provides:
+- Swagger / OpenAPI spec URL or file
+- Base URL and API key / auth headers
+- A goal in plain English ("test the full chat flow", "run a checkout simulation")
+- Number of agents (N)
 
-### 3. Deployment-Scoped Storage
-- Fingerprints are **only stored on explicit user action** ("Save as Deployment")
-- Each saved fingerprint is tagged with version, date, and optional notes
-- One fingerprint per deployment — clean, intentional history
+**Pre-run validation**: before anything fires, AlgoLens checks that all required fields are present, the spec is reachable, and the auth header is valid. Catches mistakes before spending API cost.
 
-### 4. Version Diff
-- Select any two saved deployments
-- Side-by-side curve overlay
-- Delta report: what changed, by how much, in which direction
-- Plain English summary of the regression or improvement
+**The Planning Phase** (what makes this different):
 
-### 5. Closest Release Finder (Reverse Search)
-- Given the current fingerprint, search all stored deployment fingerprints using **cosine similarity** on the fingerprint vector
-- Returns the top 3 closest historical versions ranked by similarity score
-- Useful for: *"this behavior looks familiar — which version did we see this before?"*
-- Especially powerful when a regression matches a previously rolled-back deployment
+Before any agent fires a single request, all N agents collectively plan:
+- Each agent is assigned a non-overlapping slice of the input space
+- Each agent picks a distinct persona (power user, casual user, adversarial tester, first-time user)
+- Each agent defines its action plan — what endpoints to call, in what order, what to do with the responses
+- Plans are locked and shown to the user before execution begins
 
-### 6. Drift Timeline
-- Chronological plot of fingerprint vectors across all saved deployments
-- Visual indicator of when complexity class changed
-- Highlights the exact deployment where drift began
+This prevents two agents from doing the same thing, ensures the full input space is covered, and makes the results comparable across agents.
+
+**The Execution Phase**:
+
+All N agents run concurrently. Each agent is a Claude conversation loop:
+1. Claude reads the Swagger spec to understand every available endpoint
+2. Claude fires a request using the `call_endpoint` tool (method, URL, headers, body)
+3. Go executes the actual HTTP request and returns `{status, body, latency_ms}`
+4. Claude reads the response, decides what to do next
+5. Repeat until the goal is achieved or the session hits a limit
+
+All N agent sessions stream live to the frontend via SSE. The user sees N panels simultaneously, with a dropdown to focus on any single one. Every request, every response, every piece of Claude's reasoning is visible in real time.
+
+Results are stored in Postgres for comparison across deployments.
 
 ---
 
-## How the Reverse Search Works
+### Mode 3 — Deployment Comparison
 
-Each fingerprint is stored as a vector:
+Every run in AlgoLens can be saved with a user-defined name and tag (e.g. "v2.3.1", "post-refactor", "pre-launch").
 
-```
-[
-  complexity_exponent,      # 1.0 = O(n), 2.0 = O(n²), 0.0 = O(1)
-  memory_growth_rate,       # slope of memory vs input size
-  concurrency_cliff,        # req/s at which latency spikes
-  breaking_point,           # input size at which p99 > threshold
-  read_write_ratio          # 0.0 = write-heavy, 1.0 = read-heavy
-]
-```
+Pick any two saved deployments. AlgoLens shows:
+- Side-by-side latency curves
+- Delta in every metric (concurrency cliff, breaking point, error rate, complexity class)
+- Plain English summary of what changed and in which direction
+- Per-step latency heatmap across agents (which endpoint call got slower?)
 
-When you want to find the closest historical version to a current fingerprint, AlgoLens computes **cosine similarity** between the current vector and all stored vectors.
-
-```
-similarity(A, B) = (A · B) / (|A| × |B|)
-```
-
-Returns ranked results:
-
-```
-1. v1.8.2  —  92% similar  (rolled back Nov 2025)
-2. v2.1.0  —  87% similar  (stable for 3 months)
-3. v2.0.4  —  71% similar
-```
-
-This is the **reverse search** — you don't search by name or date. You search by behavior.
+**Use case:** You deploy a change on Friday. You run the same simulation scenario on the new deploy. You compare it against last Wednesday's run. You see exactly what got faster, what got slower, and whether the breaking point shifted.
 
 ---
 
-## Tech Stack
+### Mode 4 — Similarity Search
 
-### Go — Hot Path
-Everything performance-sensitive runs in Go.
+Given the fingerprint of your most recent run, find which stored deployment it most closely resembles.
 
-| Component | Technology | Detail |
+AlgoLens stores each deployment as a fingerprint vector:
+```
+[complexity_exponent, memory_growth_rate, concurrency_cliff, breaking_point, error_rate]
+```
+
+It computes cosine similarity between the current vector and every stored deployment, returns ranked results with similarity scores and deployment tags.
+
+**Use case:** Something feels off with the new deploy. Similarity search says it's 94% similar to "v1.8.2 — the one we rolled back in November." That's a flag worth investigating.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      React Frontend                      │
+│  4 mode panels | live SSE agent streams | deployment UI  │
+└───────────────────────────┬─────────────────────────────┘
+                            │ HTTP + SSE
+          ┌─────────────────┼──────────────────┐
+          │                 │                  │
+┌─────────▼──────┐  ┌───────▼────────┐  ┌─────▼──────────┐
+│   Go Server    │  │  Python Server  │  │    Postgres     │
+│                │  │  (FastAPI)      │  │                 │
+│ Probe engine   │  │                 │  │ deployments     │
+│ HTTP firing    │  │ MCP server      │  │ sessions (JSONB)│
+│ HDR histograms │  │ Claude agent    │  │ stress results  │
+│ p50/p95/p99    │  │ orchestration   │  │   (JSONB)       │
+│ SSE relay      │  │ Swagger parsing │  │                 │
+│                │  │ Curve fitting   │  └────────────────┘
+│                │  │ Similarity math │
+└────────────────┘  └────────────────┘
+                           │
+                    Anthropic API
+                    (Claude agent loop)
+```
+
+### Responsibility Split
+
+| Layer | Responsibility | Technology |
 |---|---|---|
-| Probing Harness | Go | goroutines + `sync.WaitGroup` + channels for result collection |
-| Latency Collection | Go (HDR Histogram) | p50/p95/p99 via `hdrhistogram` library |
-| Concurrency Sweep Controller | Go | drives all n × concurrency combinations in parallel |
-| Fingerprint Vector Builder | Go | normalizes all signals into the fixed-length vector |
-| REST API | Go (net/http / Chi) | serves the frontend, orchestrates probing and storage |
+| Go | HTTP probing only — fire requests, collect latency, p50/p95/p99 | Go + HDR histogram |
+| Python | All intelligence — Claude MCP, agent orchestration, Swagger parsing, curve fitting, similarity | FastAPI + Anthropic SDK |
+| React | UI — 4 mode panels, live SSE agent panels, deployment management | Next.js + Recharts |
+| Postgres | All storage — structured metrics + JSONB for session logs and stress results | PostgreSQL |
 
-### Python — Math Layer Only
-Pure computation, no I/O in the hot path. Called by Go as a **FastAPI sidecar** over localhost HTTP.
+### Why Go only for probing
 
-| Component | Technology | Detail |
-|---|---|---|
-| Curve Fitter | SciPy (least squares) | fits latency matrix → complexity class + exponent |
-| Reverse Search | NumPy | cosine similarity across all stored fingerprint vectors |
+Go fires HTTP requests faster and with better goroutine control than Python. For accurate latency measurement at high concurrency, you want Go's lightweight goroutines, not Python's GIL-constrained threads. Every nanosecond of probe overhead contaminates the measurement.
 
-### Storage & Frontend
+### Why Python for the AI layer
 
-| Component | Technology | Purpose |
-|---|---|---|
-| Fingerprint Store | SQLite (upgradeable to PostgreSQL) | stores deployment-scoped fingerprint vectors |
-| UI | React | probe config, deployment tagging, diff view, timeline |
-| Visualization | Recharts | curve overlays, drift timeline, similarity scores |
+The Anthropic SDK, MCP protocol, SciPy curve fitting, and NumPy cosine similarity are all first-class in Python. No reason to reimplement any of this in Go.
+
+### Why Postgres for everything
+
+Postgres JSONB handles arbitrary document storage (agent session logs, variable API responses) with the same performance as MongoDB, without running a second database. Structured data (deployment tags, fingerprint vectors) lives in normal columns alongside JSONB columns for the flexible stuff.
 
 ---
 
-## What You Actually Build
+## The Agent Planning Phase — Why It Matters
 
-- [ ] Probing harness — hits endpoint at n × concurrency combinations, collects p50/p95/p99
-- [ ] Curve fitter — least squares regression to extract complexity class and coefficients
-- [ ] Fingerprint vector builder — normalizes all signals into a fixed-length vector
-- [ ] Deployment store — save fingerprint only on explicit user action with version tag
-- [ ] Cosine similarity search — finds closest historical deployment to current fingerprint
-- [ ] Version diff view — side by side curve overlay + delta report
-- [ ] Drift timeline — chronological plot of fingerprint evolution across deployments
-- [ ] Plain English explainer — translates the diff into a human-readable regression summary
+Without a planning phase, N agents all do the same thing. They pick the same inputs, follow the same flow, and produce N copies of the same data point. Useless for comparing behavior across the input space.
+
+With a planning phase, before a single request fires, all N agents agree on:
+
+**Input distribution**: Agent 1 handles small payloads, Agent 2 handles medium, Agent 3 handles large, Agent 4 handles edge cases. Full coverage, no overlap.
+
+**Persona assignment**: Agent 1 is a power user who sends complex requests. Agent 2 is a first-time user who sends minimal fields. Agent 3 is adversarial — tries unexpected values. Agent 4 is a casual user who makes mistakes.
+
+**Action plans**: Each agent defines the sequence of endpoint calls it will make, what it will extract from each response, and what counts as "done." This is locked before execution so the latency data is clean — no agent changes strategy mid-run.
+
+The result: 6 agents produce 6 distinct, non-overlapping test scenarios. The aggregate picture is a complete behavioral map of the endpoint, not 6 copies of the same request.
+
+---
+
+## Data Flow — Agentic Simulation
+
+```
+User input:
+  Swagger spec URL, base URL, auth headers, goal, N agents
+
+          ↓
+Pre-run validation (Python)
+  - Spec reachable?
+  - Auth header valid?
+  - All required fields present?
+  → Block and report if anything missing
+
+          ↓
+Planning Phase (Python → Claude)
+  - Claude reads full Swagger spec
+  - Generates N distinct agent plans
+  - User reviews plans before execution starts
+
+          ↓
+Execution Phase (N goroutines in Go + N Claude loops in Python)
+  For each agent concurrently:
+    Claude decides → Go fires HTTP → result back to Claude → repeat
+    Every event streams via SSE to frontend
+
+          ↓
+Results stored in Postgres (JSONB)
+  - Full conversation log per agent
+  - Latency per endpoint call
+  - Success/failure per session
+
+          ↓
+Fingerprint vector built (Python)
+  - Complexity class from curve fit
+  - Concurrency cliff, breaking point
+  - Stored as deployment (user names it)
+```
+
+---
+
+## What Gets Stored Per Deployment
+
+```
+deployments table:
+  id              BIGSERIAL
+  name            TEXT          ← user-defined, e.g. "v2.3.1-post-refactor"
+  tag             TEXT          ← optional label
+  mode            TEXT          ← "stress" | "simulation" | "fingerprint"
+  endpoint        TEXT
+  created_at      TIMESTAMPTZ
+  fingerprint     JSONB         ← vector for similarity search
+  sweep_result    JSONB         ← raw latency curve
+  session_logs    JSONB         ← full agent conversations (simulation mode only)
+  summary         JSONB         ← success rate, avg turns, avg latency
+  notes           TEXT
+```
 
 ---
 
 ## Resume Framing
 
-> *"Built AlgoLens — a behavioral complexity fingerprinting tool for HTTP endpoints. Probes endpoints across input sizes and concurrency levels, fits latency curves to complexity classes (O(n), O(n²), etc.), and stores fingerprints per deployment. Uses cosine similarity reverse search to identify which historical deployment a current behavioral profile most closely matches. Surfaces algorithmic regressions that unit tests and load tests cannot catch."*
+> *"Built AlgoLens — an API behavior testing platform. Mode 1: concurrent stress testing with live latency curve plotting and breaking point detection. Mode 2: agentic simulation where N Claude agents (via MCP + Anthropic API) collectively plan input distribution and personas before executing parallel multi-turn API sessions, all streamed live via SSE. Mode 3: deployment diff comparing behavioral fingerprints across tagged versions. Mode 4: cosine similarity reverse search identifying which past deployment the current behavior most closely matches. Stack: Go for the HTTP probe engine, Python FastAPI for Claude orchestration and curve fitting, Next.js frontend, Postgres with JSONB for session storage."*
 
 ---
 
-## The One-Line Summary
+## One-Line Summary
 
-> **AlgoLens fingerprints how your endpoints scale, stores one snapshot per deployment, and tells you exactly when and where the algorithmic behavior changed — before your users do.**
+> **AlgoLens puts real intelligence behind your API tests — from raw stress curves to multi-agent simulations that behave like actual users, with full deployment history to track exactly when and where behavior changed.**
