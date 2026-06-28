@@ -84,6 +84,8 @@ func TestSaveDeployment(t *testing.T) {
 		Version:           "v1.0",
 		Notes:             "baseline",
 		FingerprintVector: sampleVector(),
+		Name:              "baseline-run",
+		Mode:              "stress",
 	}
 	rr := postJSON(t, router, "/api/deployments", body)
 	if rr.Code != http.StatusCreated {
@@ -109,9 +111,9 @@ func TestSaveDeployment_MissingFields(t *testing.T) {
 func TestListDeployments(t *testing.T) {
 	db := openMemDB(t)
 	v := sampleVector()
-	store.SaveDeployment(db, "http://api/search", "v1", "", v, "", "")
-	store.SaveDeployment(db, "http://api/search", "v2", "", v, "", "")
-	store.SaveDeployment(db, "http://api/other", "v1", "", v, "", "")
+	store.SaveDeployment(db, "http://api/search", "v1", "", v, "", "", "", "", "", "run-1", "", "stress", "", "")
+	store.SaveDeployment(db, "http://api/search", "v2", "", v, "", "", "", "", "", "run-2", "", "stress", "", "")
+	store.SaveDeployment(db, "http://api/other", "v1", "", v, "", "", "", "", "", "run-3", "", "stress", "", "")
 
 	router := NewRouter(db, "")
 
@@ -131,7 +133,7 @@ func TestListDeployments(t *testing.T) {
 func TestGetDeployment(t *testing.T) {
 	db := openMemDB(t)
 	v := sampleVector()
-	id, _ := store.SaveDeployment(db, "http://api/search", "v1", "note", v, "", "")
+	id, _ := store.SaveDeployment(db, "http://api/search", "v1", "note", v, "", "", "", "", "", "run-get", "", "stress", "", "")
 
 	router := NewRouter(db, "")
 	rr := getPath(t, router, "/api/deployments/"+string(rune('0'+int(id))))
@@ -163,8 +165,8 @@ func TestDiff_ComplexityRegression(t *testing.T) {
 	db := openMemDB(t)
 	v1 := fingerprint.Vector{ComplexityClass: "O(n)", ComplexityExponent: 1.0, ConcurrencyCliff: 16, BreakingPoint: 1024, ReadWriteRatio: 0.5}
 	v2 := fingerprint.Vector{ComplexityClass: "O(n²)", ComplexityExponent: 2.0, ConcurrencyCliff: 8, BreakingPoint: 512, ReadWriteRatio: 0.5}
-	store.SaveDeployment(db, "http://api/search", "v1", "", v1, "", "")
-	store.SaveDeployment(db, "http://api/search", "v2", "", v2, "", "")
+	store.SaveDeployment(db, "http://api/search", "v1", "", v1, "", "", "", "", "", "diff-run-1", "", "stress", "", "")
+	store.SaveDeployment(db, "http://api/search", "v2", "", v2, "", "", "", "", "", "diff-run-2", "", "stress", "", "")
 
 	router := NewRouter(db, "")
 	rr := getPath(t, router, "/api/diff?a=1&b=2")
@@ -193,9 +195,9 @@ func TestDiff_ComplexityRegression(t *testing.T) {
 func TestTimeline_ChronologicalOrder(t *testing.T) {
 	db := openMemDB(t)
 	v := sampleVector()
-	store.SaveDeployment(db, "http://api/search", "v1", "", v, "", "")
-	store.SaveDeployment(db, "http://api/search", "v2", "", v, "", "")
-	store.SaveDeployment(db, "http://api/search", "v3", "", v, "", "")
+	store.SaveDeployment(db, "http://api/search", "v1", "", v, "", "", "", "", "", "timeline-1", "", "stress", "", "")
+	store.SaveDeployment(db, "http://api/search", "v2", "", v, "", "", "", "", "", "timeline-2", "", "stress", "", "")
+	store.SaveDeployment(db, "http://api/search", "v3", "", v, "", "", "", "", "", "timeline-3", "", "stress", "", "")
 
 	router := NewRouter(db, "")
 	rr := getPath(t, router, "/api/timeline?endpoint=http://api/search")

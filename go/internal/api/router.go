@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-// NewRouter wires all API routes and returns an http.Handler.
+// NewRouter wires all public API routes and returns an http.Handler.
 func NewRouter(db *sql.DB, sidecarURL string) http.Handler {
 	mux := http.NewServeMux()
 
@@ -13,7 +13,6 @@ func NewRouter(db *sql.DB, sidecarURL string) http.Handler {
 
 	mux.HandleFunc("GET /health", h.health)
 
-	// Phase 6 REST API
 	mux.HandleFunc("POST /api/probe", h.apiProbe)
 	mux.HandleFunc("POST /api/stress", h.apiStress)
 	mux.HandleFunc("POST /api/deployments", h.apiSaveDeployment)
@@ -24,6 +23,15 @@ func NewRouter(db *sql.DB, sidecarURL string) http.Handler {
 	mux.HandleFunc("POST /api/search", h.apiSearch)
 
 	return corsMiddleware(mux)
+}
+
+// NewInternalRouter wires routes only reachable from localhost (no CORS).
+// Bound to 127.0.0.1:8081 so the internet cannot reach it.
+func NewInternalRouter(db *sql.DB, sidecarURL string) http.Handler {
+	mux := http.NewServeMux()
+	h := &handler{db: db, sidecarURL: sidecarURL}
+	mux.HandleFunc("POST /internal/probe-once", h.apiProbeOnce)
+	return mux
 }
 
 type handler struct {

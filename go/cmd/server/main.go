@@ -13,15 +13,14 @@ import (
 )
 
 const (
-	sidecarURL = "http://localhost:8001"
-	serverPort = ":8080"
+	sidecarURL   = "http://localhost:8001"
+	serverPort   = ":8080"
+	internalPort = "127.0.0.1:8081"
 )
 
 func main() {
-	// Load .env if present (ignored if missing)
 	_ = godotenv.Load()
 
-	// Wait for Python sidecar to be ready
 	if err := waitForSidecar(sidecarURL+"/health", 30*time.Second); err != nil {
 		log.Fatalf("Python sidecar not ready: %v", err)
 	}
@@ -39,9 +38,17 @@ func main() {
 	defer db.Close()
 	log.Println("Supabase: OK")
 
-	// Wire up routes
-	mux := api.NewRouter(db.DB, sidecarURL)
+	// Internal server — localhost only, for Python agent calls
+	internalMux := api.NewInternalRouter(db.DB, sidecarURL)
+	go func() {
+		log.Printf("AlgoLens internal API listening on %s\n", internalPort)
+		if err := http.ListenAndServe(internalPort, internalMux); err != nil {
+			log.Fatalf("Internal server error: %v", err)
+		}
+	}()
 
+	// Public API
+	mux := api.NewRouter(db.DB, sidecarURL)
 	log.Printf("AlgoLens API listening on %s\n", serverPort)
 	if err := http.ListenAndServe(serverPort, mux); err != nil {
 		log.Fatalf("Server error: %v", err)
