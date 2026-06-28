@@ -52,95 +52,114 @@ async def run_session(
     turns = 0
     success = False
 
-    while turns < MAX_TURNS:
-        response = await asyncio.to_thread(
-            client.messages.create,
-            model=MODEL,
-            max_tokens=4096,
-            system=system,
-            tools=[CALL_ENDPOINT_TOOL],
-            messages=messages,
-        )
+    try:
+        while turns < MAX_TURNS:
+            response = await asyncio.to_thread(
+                client.messages.create,
+                model=MODEL,
+                max_tokens=4096,
+                system=system,
+                tools=[CALL_ENDPOINT_TOOL],
+                messages=messages,
+            )
 
-        # Add assistant turn to history
-        assistant_content = response.content
-        messages.append({"role": "assistant", "content": assistant_content})
+            # Add assistant turn to history
+            assistant_content = response.content
+            messages.append({"role": "assistant", "content": assistant_content})
 
-        if response.stop_reason == "tool_use":
-            # Emit reasoning text blocks before tool calls
-            for block in assistant_content:
-                if block.type == "text" and block.text.strip():
+            if response.stop_reason == "tool_use":
+                # Emit reasoning text blocks before tool calls
+                for block in assistant_content:
+                    if block.type == "text" and block.text.strip():
+                        await event_queue.put({
+                            "session_id": session_id,
+                            "type": "reasoning",
+                            "text": block.text.strip(),
+                            "turn": turns + 1,
+                        })
+
+                tool_results = []
+                for block in assistant_content:
+                    if block.type != "tool_use":
+                        continue
+
+                    tool_input = block.input
+
                     await event_queue.put({
                         "session_id": session_id,
-                        "type": "reasoning",
-                        "text": block.text.strip(),
+                        "type": "request",
+                        "tool_use_id": block.id,
+                        "method": tool_input.get("method"),
+                        "url": tool_input.get("url"),
+                        "body": tool_input.get("body"),
+                        "turn": turns + 1,
+                        "t": int(time.time() * 1000),
+                    })
+
+                    result = await asyncio.to_thread(execute_tool, tool_input, go_probe_url)
+
+                    await event_queue.put({
+                        "session_id": session_id,
+                        "type": "response",
+                        "url": tool_input.get("url", ""),
+                        "status_code": result.get("status_code"),
+                        "body": result.get("body"),
+                        "latency_ms": result.get("latency_ms"),
+                        "error": result.get("error", ""),
                         "turn": turns + 1,
                     })
 
-            tool_results = []
-            for block in assistant_content:
-                if block.type != "tool_use":
-                    continue
-
-                tool_input = block.input
-
-                await event_queue.put({
-                    "session_id": session_id,
-                    "type": "request",
-                    "tool_use_id": block.id,
-                    "method": tool_input.get("method"),
-                    "url": tool_input.get("url"),
-                    "body": tool_input.get("body"),
-                    "turn": turns + 1,
-                    "t": int(time.time() * 1000),
-                })
-
-                result = await asyncio.to_thread(execute_tool, tool_input, go_probe_url)
-
-                await event_queue.put({
-                    "session_id": session_id,
-                    "type": "response",
-                    "status_code": result.get("status_code"),
-                    "body": result.get("body"),
-                    "latency_ms": result.get("latency_ms"),
-                    "error": result.get("error", ""),
-                    "turn": turns + 1,
-                })
-
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": json.dumps(result),
-                })
-
-            messages.append({"role": "user", "content": tool_results})
-
-        elif response.stop_reason == "end_turn":
-            # Emit any final reasoning text
-            for block in assistant_content:
-                if block.type == "text" and block.text.strip():
-                    await event_queue.put({
-                        "session_id": session_id,
-                        "type": "reasoning",
-                        "text": block.text.strip(),
-                        "turn": turns + 1,
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result),
                     })
-            success = True
-            break
 
-        turns += 1
+                messages.append({"role": "user", "content": tool_results})
 
+            elif response.stop_reason == "end_turn":
+                # Emit any final reasoning text
+                for block in assistant_content:
+                    if block.type == "text" and block.text.strip():
+                        await event_queue.put({
+                            "session_id": session_id,
+                            "type": "reasoning",
+                            "text": block.text.strip(),
+                            "turn": turns + 1,
+                        })
+                success = True
+                break
+
+            turns += 1
+
+    except Exception as exc:
+        await event_queue.put({
+            "session_id": session_id,
+            "type": "done",
+            "success": False,
+            "turns": turns,
+            "reason": f"error: {type(exc).__name__}",
+        })
+        return {
+            "session_id": session_id,
+            "success": False,
+            "turns": turns,
+            "messages": messages,
+        }
+
+    # turns + 1 when success because break skips the increment at the loop bottom
+    completed_turns = turns + 1 if success else turns
     await event_queue.put({
         "session_id": session_id,
         "type": "done",
         "success": success,
-        "turns": turns,
+        "turns": completed_turns,
         "reason": "end_turn" if success else "turn_limit",
     })
 
     return {
         "session_id": session_id,
         "success": success,
-        "turns": turns,
+        "turns": completed_turns,
         "messages": messages,
     }
