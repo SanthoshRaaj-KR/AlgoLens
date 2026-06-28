@@ -39,7 +39,7 @@ func TestSaveAndGetDeployment(t *testing.T) {
 	db := openTestDB(t)
 	v := sampleVector()
 
-	id, err := SaveDeployment(db.DB, "http://api.example.com/search", "v1.2.0", "baseline", v, `[[1,1.0]]`, `{}`)
+	id, err := SaveDeployment(db.DB, "http://api.example.com/search", "v1.2.0", "baseline", v, `[[1,1.0]]`, `{}`, "", "", "GET", "baseline-run", "", "stress", "", "")
 	if err != nil {
 		t.Fatalf("SaveDeployment: %v", err)
 	}
@@ -76,9 +76,9 @@ func TestListDeployments_FiltersByEndpoint(t *testing.T) {
 	db := openTestDB(t)
 	v := sampleVector()
 
-	SaveDeployment(db.DB, "http://api/search", "v1", "", v, "", "")
-	SaveDeployment(db.DB, "http://api/search", "v2", "", v, "", "")
-	SaveDeployment(db.DB, "http://api/other", "v1", "", v, "", "")
+	SaveDeployment(db.DB, "http://api/search", "v1", "", v, "", "", "", "", "", "run-1", "", "stress", "", "")
+	SaveDeployment(db.DB, "http://api/search", "v2", "", v, "", "", "", "", "", "run-2", "", "stress", "", "")
+	SaveDeployment(db.DB, "http://api/other", "v1", "", v, "", "", "", "", "", "run-3", "", "stress", "", "")
 
 	list, err := ListDeployments(db.DB, "http://api/search")
 	if err != nil {
@@ -98,8 +98,8 @@ func TestListDeployments_AllWhenEmpty(t *testing.T) {
 	db := openTestDB(t)
 	v := sampleVector()
 
-	SaveDeployment(db.DB, "http://api/a", "v1", "", v, "", "")
-	SaveDeployment(db.DB, "http://api/b", "v1", "", v, "", "")
+	SaveDeployment(db.DB, "http://api/a", "v1", "", v, "", "", "", "", "", "run-a", "", "stress", "", "")
+	SaveDeployment(db.DB, "http://api/b", "v1", "", v, "", "", "", "", "", "run-b", "", "stress", "", "")
 
 	list, err := ListDeployments(db.DB, "")
 	if err != nil {
