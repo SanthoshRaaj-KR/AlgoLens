@@ -15,6 +15,7 @@ func NewRouter(db *sql.DB, sidecarURL string) http.Handler {
 
 	// Phase 6 REST API
 	mux.HandleFunc("POST /api/probe", h.apiProbe)
+	mux.HandleFunc("POST /api/stress", h.apiStress)
 	mux.HandleFunc("POST /api/deployments", h.apiSaveDeployment)
 	mux.HandleFunc("GET /api/deployments", h.apiListDeployments)
 	mux.HandleFunc("GET /api/deployments/{id}", h.apiGetDeployment)
