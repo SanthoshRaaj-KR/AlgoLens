@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from agent.mcp import execute_tool
+from agent.planner import generate_plans, validate_plans
 from agent.spec import (
     cache_summary,
     format_for_claude,
@@ -127,4 +128,70 @@ def spec_load(req: SpecLoadRequest) -> SpecLoadResponse:
         endpoint_count=len(summary["endpoints"]),
     )
 
-# Phase 5 (agent planning) routes mount here.
+
+# ── POST /agent/plan ──────────────────────────────────────────────────────────
+
+
+class AgentPlanRequest(BaseModel):
+    spec_url: str
+    goal: str
+    n_agents: int = 3
+
+
+class AgentPlan(BaseModel):
+    agent_id: int
+    persona: str
+    tone: str = ""
+    input_slice: str
+    action_plan: list[str]
+    success_condition: str
+
+
+class AgentPlanResponse(BaseModel):
+    plans: list[AgentPlan]
+    spec_title: str
+    validation_errors: list[str]
+
+
+@router.post("/plan", response_model=AgentPlanResponse)
+async def agent_plan(req: AgentPlanRequest) -> AgentPlanResponse:
+    if req.n_agents < 1 or req.n_agents > 10:
+        raise HTTPException(status_code=422, detail="n_agents must be between 1 and 10")
+
+    # Load spec (from cache if available)
+    summary = get_cached_summary(req.spec_url)
+    if not summary:
+        try:
+            spec = load_spec(req.spec_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        summary = summarise_spec(spec)
+        cache_summary(req.spec_url, summary)
+
+    try:
+        plans_raw = await generate_plans(req.spec_url, req.goal, req.n_agents)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Planning failed: {exc}") from exc
+
+    validation_errors = validate_plans(plans_raw, summary)
+
+    plans = []
+    for p in plans_raw:
+        try:
+            plans.append(AgentPlan(
+                agent_id=p.get("agent_id", 0),
+                persona=p.get("persona", ""),
+                tone=p.get("tone", ""),
+                input_slice=p.get("input_slice", ""),
+                action_plan=p.get("action_plan", []),
+                success_condition=p.get("success_condition", ""),
+            ))
+        except Exception:
+            validation_errors.append(f"Could not parse plan: {p}")
+
+    return AgentPlanResponse(
+        plans=plans,
+        spec_title=summary.get("title", ""),
+        validation_errors=validation_errors,
+    )
+
