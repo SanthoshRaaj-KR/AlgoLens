@@ -122,7 +122,7 @@ def spec_load(req: SpecLoadRequest) -> SpecLoadResponse:
         try:
             spec = load_spec(req.spec_url)
         except ValueError as exc:
-            raise ValueError(str(exc)) from exc
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         summary = summarise_spec(spec)
         cache_summary(req.spec_url, summary)
 
