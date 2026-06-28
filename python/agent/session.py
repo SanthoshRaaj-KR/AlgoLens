@@ -67,6 +67,16 @@ async def run_session(
         messages.append({"role": "assistant", "content": assistant_content})
 
         if response.stop_reason == "tool_use":
+            # Emit reasoning text blocks before tool calls
+            for block in assistant_content:
+                if block.type == "text" and block.text.strip():
+                    await event_queue.put({
+                        "session_id": session_id,
+                        "type": "reasoning",
+                        "text": block.text.strip(),
+                        "turn": turns + 1,
+                    })
+
             tool_results = []
             for block in assistant_content:
                 if block.type != "tool_use":
@@ -81,6 +91,7 @@ async def run_session(
                     "method": tool_input.get("method"),
                     "url": tool_input.get("url"),
                     "body": tool_input.get("body"),
+                    "turn": turns + 1,
                     "t": int(time.time() * 1000),
                 })
 
@@ -93,6 +104,7 @@ async def run_session(
                     "body": result.get("body"),
                     "latency_ms": result.get("latency_ms"),
                     "error": result.get("error", ""),
+                    "turn": turns + 1,
                 })
 
                 tool_results.append({
@@ -104,6 +116,15 @@ async def run_session(
             messages.append({"role": "user", "content": tool_results})
 
         elif response.stop_reason == "end_turn":
+            # Emit any final reasoning text
+            for block in assistant_content:
+                if block.type == "text" and block.text.strip():
+                    await event_queue.put({
+                        "session_id": session_id,
+                        "type": "reasoning",
+                        "text": block.text.strip(),
+                        "turn": turns + 1,
+                    })
             success = True
             break
 

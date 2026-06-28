@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+import json
+
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from agent.mcp import execute_tool
 from agent.planner import generate_plans, validate_plans
+from agent.runner import GO_PROBE_URL, create_group, get_group, run_group
 from agent.spec import (
     cache_summary,
     format_for_claude,
@@ -193,5 +198,97 @@ async def agent_plan(req: AgentPlanRequest) -> AgentPlanResponse:
         plans=plans,
         spec_title=summary.get("title", ""),
         validation_errors=validation_errors,
+    )
+
+
+# ── POST /agent/run ───────────────────────────────────────────────────────────
+
+
+class AgentRunRequest(BaseModel):
+    spec_url: str
+    plans: list[dict]
+    base_url: str = ""
+    headers: dict[str, str] = {}
+    goal: str = "test the API"
+    name: str = ""
+    tag: str = ""
+
+
+class AgentRunResponse(BaseModel):
+    session_group_id: str
+
+
+@router.post("/run", response_model=AgentRunResponse)
+async def agent_run(req: AgentRunRequest) -> AgentRunResponse:
+    import agent.runner as _runner_mod
+
+    # Load spec summary for session prompts
+    summary = get_cached_summary(req.spec_url)
+    if not summary:
+        try:
+            spec = load_spec(req.spec_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        summary = summarise_spec(spec)
+        cache_summary(req.spec_url, summary)
+
+    spec_text = format_for_claude(summary)
+    gid = create_group(
+        plans=req.plans,
+        spec_url=req.spec_url,
+        base_url=req.base_url,
+        name=req.name,
+        tag=req.tag,
+    )
+    _runner_mod._groups[gid]["goal"] = req.goal
+
+    asyncio.create_task(run_group(gid, spec_text, go_probe_url=GO_PROBE_URL))
+
+    return AgentRunResponse(session_group_id=gid)
+
+
+# ── GET /agent/stream/{session_group_id} ──────────────────────────────────────
+
+
+@router.get("/stream/{session_group_id}")
+async def agent_stream(session_group_id: str, request: Request):
+    group = get_group(session_group_id)
+    if group is None:
+        async def error_gen():
+            yield 'data: {"type":"error","message":"session not found"}\n\n'
+        return StreamingResponse(error_gen(), media_type="text/event-stream")
+
+    # Support Last-Event-ID for reconnection
+    last_id_header = request.headers.get("Last-Event-ID", "")
+    try:
+        offset = int(last_id_header) + 1
+    except (ValueError, TypeError):
+        offset = 0
+
+    async def event_gen():
+        nonlocal offset
+        while True:
+            events = group["events"]
+            while offset < len(events):
+                event = events[offset]
+                data = json.dumps(event)
+                yield f"id: {offset}\ndata: {data}\n\n"
+                offset += 1
+
+            if group["status"] == "done" and offset >= len(group["events"]):
+                break
+
+            await asyncio.sleep(0.05)
+
+            if await request.is_disconnected():
+                break
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
