@@ -48,6 +48,11 @@ func migrate(db *sql.DB) error {
 		ALTER TABLE deployments ADD COLUMN IF NOT EXISTS headers          TEXT;
 		ALTER TABLE deployments ADD COLUMN IF NOT EXISTS payload_template TEXT;
 		ALTER TABLE deployments ADD COLUMN IF NOT EXISTS http_method      TEXT;
+		ALTER TABLE deployments ADD COLUMN IF NOT EXISTS name             TEXT;
+		ALTER TABLE deployments ADD COLUMN IF NOT EXISTS tag              TEXT;
+		ALTER TABLE deployments ADD COLUMN IF NOT EXISTS mode             TEXT;
+		ALTER TABLE deployments ADD COLUMN IF NOT EXISTS session_logs     JSONB;
+		ALTER TABLE deployments ADD COLUMN IF NOT EXISTS summary          JSONB;
 	`)
 	return err
 }

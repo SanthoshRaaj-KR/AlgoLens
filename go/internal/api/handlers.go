@@ -115,6 +115,11 @@ type saveDeploymentRequest struct {
 	HeadersJSON       string             `json:"headers_json"`
 	PayloadTemplate   string             `json:"payload_template"`
 	HTTPMethod        string             `json:"http_method"`
+	Name              string             `json:"name"`
+	Tag               string             `json:"tag"`
+	Mode              string             `json:"mode"`
+	SessionLogs       string             `json:"session_logs"`
+	Summary           string             `json:"summary"`
 }
 
 func (h *handler) apiSaveDeployment(w http.ResponseWriter, r *http.Request) {
@@ -127,8 +132,12 @@ func (h *handler) apiSaveDeployment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "endpoint and version are required")
 		return
 	}
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
 
-	id, err := store.SaveDeployment(h.db, req.Endpoint, req.Version, req.Notes, req.FingerprintVector, req.FittedCurveJSON, req.SweepResultJSON, req.HeadersJSON, req.PayloadTemplate, req.HTTPMethod)
+	id, err := store.SaveDeployment(h.db, req.Endpoint, req.Version, req.Notes, req.FingerprintVector, req.FittedCurveJSON, req.SweepResultJSON, req.HeadersJSON, req.PayloadTemplate, req.HTTPMethod, req.Name, req.Tag, req.Mode, req.SessionLogs, req.Summary)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "save failed: "+err.Error())
 		return
