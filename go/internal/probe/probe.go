@@ -65,6 +65,9 @@ func ProbeStep(cfg ProbeConfig, n, concurrency int, client *http.Client) (ProbeP
 			if body != "" {
 				req.Header.Set("Content-Type", "application/json")
 			}
+			for k, v := range cfg.Headers {
+				req.Header.Set(k, v)
+			}
 
 			resp, err := client.Do(req)
 			elapsed := time.Since(start).Nanoseconds()

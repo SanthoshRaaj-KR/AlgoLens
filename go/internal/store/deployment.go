@@ -7,7 +7,7 @@ import (
 	"github.com/SanthoshRaaj-KR/algolens/internal/fingerprint"
 )
 
-// Deployment is one saved probe run retrieved from SQLite.
+// Deployment is one saved probe run retrieved from the database.
 type Deployment struct {
 	ID              int64
 	Endpoint        string
@@ -15,13 +15,15 @@ type Deployment struct {
 	Notes           string
 	CreatedAt       time.Time
 	Vector          fingerprint.Vector
-	FittedCurveJSON string // raw JSON blob
-	SweepResultJSON string // raw JSON blob
+	FittedCurveJSON string
+	SweepResultJSON string
+	HeadersJSON     string // JSON object of custom headers used during probe
+	PayloadTemplate string // payload template used during probe (with {{n}})
+	HTTPMethod      string // HTTP method used during probe
 }
 
 // SaveDeployment inserts a new row and returns its ID.
-// Never called automatically — only on explicit user action.
-func SaveDeployment(db *sql.DB, endpoint, version, notes string, v fingerprint.Vector, fittedCurveJSON, sweepResultJSON string) (int64, error) {
+func SaveDeployment(db *sql.DB, endpoint, version, notes string, v fingerprint.Vector, fittedCurveJSON, sweepResultJSON, headersJSON, payloadTemplate, httpMethod string) (int64, error) {
 	var id int64
 	err := db.QueryRow(`
 		INSERT INTO deployments (
@@ -29,14 +31,16 @@ func SaveDeployment(db *sql.DB, endpoint, version, notes string, v fingerprint.V
 			complexity_class, complexity_exponent,
 			memory_growth_rate, concurrency_cliff,
 			breaking_point, read_write_ratio,
-			fitted_curve, sweep_result
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			fitted_curve, sweep_result,
+			headers, payload_template, http_method
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		RETURNING id`,
 		endpoint, version, notes,
 		v.ComplexityClass, v.ComplexityExponent,
 		v.MemoryGrowthRate, v.ConcurrencyCliff,
 		v.BreakingPoint, v.ReadWriteRatio,
 		fittedCurveJSON, sweepResultJSON,
+		headersJSON, payloadTemplate, httpMethod,
 	).Scan(&id)
 	return id, err
 }
@@ -48,28 +52,27 @@ func GetDeployment(db *sql.DB, id int64) (Deployment, error) {
 		       complexity_class, complexity_exponent,
 		       memory_growth_rate, concurrency_cliff,
 		       breaking_point, read_write_ratio,
-		       fitted_curve, sweep_result
+		       fitted_curve, sweep_result,
+		       COALESCE(headers,''), COALESCE(payload_template,''), COALESCE(http_method,'GET')
 		FROM deployments WHERE id = $1`, id)
 	return scanDeployment(row)
 }
 
-// ListDeployments returns all deployments for a given endpoint, newest first.
-// Pass an empty string to list all deployments.
+// ListDeployments returns all deployments, newest first.
+// Pass an empty string to list all.
 func ListDeployments(db *sql.DB, endpoint string) ([]Deployment, error) {
 	var rows *sql.Rows
 	var err error
+	q := `SELECT id, endpoint, version, notes, created_at,
+		complexity_class, complexity_exponent, memory_growth_rate,
+		concurrency_cliff, breaking_point, read_write_ratio,
+		fitted_curve, sweep_result,
+		COALESCE(headers,''), COALESCE(payload_template,''), COALESCE(http_method,'GET')
+		FROM deployments`
 	if endpoint == "" {
-		rows, err = db.Query(`SELECT id, endpoint, version, notes, created_at,
-			complexity_class, complexity_exponent, memory_growth_rate,
-			concurrency_cliff, breaking_point, read_write_ratio,
-			fitted_curve, sweep_result
-			FROM deployments ORDER BY created_at DESC, id DESC`)
+		rows, err = db.Query(q + ` ORDER BY created_at DESC, id DESC`)
 	} else {
-		rows, err = db.Query(`SELECT id, endpoint, version, notes, created_at,
-			complexity_class, complexity_exponent, memory_growth_rate,
-			concurrency_cliff, breaking_point, read_write_ratio,
-			fitted_curve, sweep_result
-			FROM deployments WHERE endpoint = $1 ORDER BY created_at DESC, id DESC`, endpoint)
+		rows, err = db.Query(q+` WHERE endpoint = $1 ORDER BY created_at DESC, id DESC`, endpoint)
 	}
 	if err != nil {
 		return nil, err
@@ -100,6 +103,7 @@ func scanDeployment(s scanner) (Deployment, error) {
 		&d.Vector.MemoryGrowthRate, &d.Vector.ConcurrencyCliff,
 		&d.Vector.BreakingPoint, &d.Vector.ReadWriteRatio,
 		&fittedCurve, &sweepResult,
+		&d.HeadersJSON, &d.PayloadTemplate, &d.HTTPMethod,
 	)
 	if err != nil {
 		return Deployment{}, err

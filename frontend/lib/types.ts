@@ -42,6 +42,9 @@ export interface Deployment {
   Vector: FingerprintVector
   FittedCurveJSON: string
   SweepResultJSON: string
+  HeadersJSON: string
+  PayloadTemplate: string
+  HTTPMethod: string
 }
 
 export interface FieldDelta {
@@ -67,6 +70,7 @@ export interface ProbeRequest {
   endpoint: string
   method: string
   payload_template?: string
+  headers?: Record<string, string>
   input_sizes?: number[]
   concurrency_levels?: number[]
   warmup_rounds?: number
@@ -81,4 +85,7 @@ export interface SaveDeploymentRequest {
   fingerprint_vector: FingerprintVector
   fitted_curve?: string
   sweep_result?: string
+  headers_json?: string
+  payload_template?: string
+  http_method?: string
 }

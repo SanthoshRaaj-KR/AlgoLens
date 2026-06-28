@@ -34,6 +34,45 @@
   --error-sub:    rgba(239,68,68,0.1);
 }
 
+/* ── Light theme ── */
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --bg:           #f6f7fb;
+  --bg-surface:   #ffffff;
+  --bg-card:      #ffffff;
+  --bg-hover:     #eef0ff;
+  --border:       #e5e7f0;
+  --border-mid:   #d0d4e8;
+  --border-glow:  rgba(124,58,237,0.2);
+
+  --accent:       #7c3aed;
+  --accent-2:     #3b82f6;
+  --accent-light: #6d28d9;
+  --accent-sub:   rgba(124,58,237,0.08);
+  --gradient:     linear-gradient(135deg, #7c3aed 0%, #4f46e5 50%, #3b82f6 100%);
+
+  --text:         #0f1020;
+  --text-2:       #3d4466;
+  --text-3:       #8b94b8;
+
+  --success:      #059669;
+  --success-sub:  rgba(5,150,105,0.08);
+  --warning:      #d97706;
+  --warning-sub:  rgba(217,119,6,0.08);
+  --error:        #dc2626;
+  --error-sub:    rgba(220,38,38,0.07);
+}
+
+html[data-theme="light"] .modal-backdrop {
+  background: rgba(15,16,32,0.6);
+}
+html[data-theme="light"] .card-header {
+  background: rgba(0,0,0,0.02);
+}
+html[data-theme="light"] .error-box { color: #b91c1c; }
+html[data-theme="light"] .success-box { color: #065f46; }
+
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body { height: 100%; }

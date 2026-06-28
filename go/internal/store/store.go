@@ -40,8 +40,14 @@ func migrate(db *sql.DB) error {
 			breaking_point       DOUBLE PRECISION,
 			read_write_ratio     DOUBLE PRECISION,
 			fitted_curve         TEXT,
-			sweep_result         TEXT
+			sweep_result         TEXT,
+			headers              TEXT,
+			payload_template     TEXT,
+			http_method          TEXT
 		);
+		ALTER TABLE deployments ADD COLUMN IF NOT EXISTS headers          TEXT;
+		ALTER TABLE deployments ADD COLUMN IF NOT EXISTS payload_template TEXT;
+		ALTER TABLE deployments ADD COLUMN IF NOT EXISTS http_method      TEXT;
 	`)
 	return err
 }

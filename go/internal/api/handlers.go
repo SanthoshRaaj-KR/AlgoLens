@@ -26,14 +26,15 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 // ── POST /api/probe ───────────────────────────────────────────────────────
 
 type probeRequest struct {
-	Endpoint          string  `json:"endpoint"`
-	Method            string  `json:"method"`
-	PayloadTemplate   string  `json:"payload_template"`
-	InputSizes        []int   `json:"input_sizes"`
-	ConcurrencyLevels []int   `json:"concurrency_levels"`
-	WarmupRounds      int     `json:"warmup_rounds"`
-	SamplesPerStep    int     `json:"samples_per_step"`
-	TimeoutMS         int     `json:"timeout_ms"`
+	Endpoint          string            `json:"endpoint"`
+	Method            string            `json:"method"`
+	PayloadTemplate   string            `json:"payload_template"`
+	Headers           map[string]string `json:"headers"`
+	InputSizes        []int             `json:"input_sizes"`
+	ConcurrencyLevels []int             `json:"concurrency_levels"`
+	WarmupRounds      int               `json:"warmup_rounds"`
+	SamplesPerStep    int               `json:"samples_per_step"`
+	TimeoutMS         int               `json:"timeout_ms"`
 }
 
 type probeResponse struct {
@@ -61,6 +62,7 @@ func (h *handler) apiProbe(w http.ResponseWriter, r *http.Request) {
 
 	cfg := probe.DefaultProbeConfig(req.Endpoint, method)
 	cfg.PayloadTemplate = req.PayloadTemplate
+	cfg.Headers = req.Headers
 	if len(req.InputSizes) > 0 {
 		cfg.InputSizes = req.InputSizes
 	}
@@ -110,6 +112,9 @@ type saveDeploymentRequest struct {
 	FingerprintVector fingerprint.Vector `json:"fingerprint_vector"`
 	FittedCurveJSON   string             `json:"fitted_curve"`
 	SweepResultJSON   string             `json:"sweep_result"`
+	HeadersJSON       string             `json:"headers_json"`
+	PayloadTemplate   string             `json:"payload_template"`
+	HTTPMethod        string             `json:"http_method"`
 }
 
 func (h *handler) apiSaveDeployment(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +128,7 @@ func (h *handler) apiSaveDeployment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := store.SaveDeployment(h.db, req.Endpoint, req.Version, req.Notes, req.FingerprintVector, req.FittedCurveJSON, req.SweepResultJSON)
+	id, err := store.SaveDeployment(h.db, req.Endpoint, req.Version, req.Notes, req.FingerprintVector, req.FittedCurveJSON, req.SweepResultJSON, req.HeadersJSON, req.PayloadTemplate, req.HTTPMethod)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "save failed: "+err.Error())
 		return

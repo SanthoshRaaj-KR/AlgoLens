@@ -7,16 +7,17 @@ import (
 
 // ProbeConfig describes a single endpoint to sweep.
 type ProbeConfig struct {
-	Endpoint        string // URL with optional {{n}} placeholder, e.g. "http://host/search?limit={{n}}"
-	Method          string // HTTP method: GET, POST, etc.
-	PayloadTemplate string // JSON body with optional {{n}} placeholder; empty for GET
-	Variable        string // name of the substitution variable (always "n" for now)
-	InputSizes      []int  // geometric sweep values, e.g. [1,2,4,8,16,...]
-	ConcurrencyLevels []int // concurrency values to sweep, e.g. [1,2,4,8]
-	WarmupRounds    int    // global warmup requests fired before the sweep (discarded)
-	SamplesPerStep  int    // k requests recorded per (n, concurrency) step
-	StepWarmup      int    // per-step warmup requests discarded before sampling
-	TimeoutMS       int    // per-request timeout in milliseconds
+	Endpoint          string            // URL with optional {{n}} placeholder, e.g. "http://host/search?limit={{n}}"
+	Method            string            // HTTP method: GET, POST, etc.
+	PayloadTemplate   string            // JSON body with optional {{n}} placeholder; empty for GET
+	Headers           map[string]string // extra request headers, e.g. Authorization, X-API-Key
+	Variable          string            // name of the substitution variable (always "n" for now)
+	InputSizes        []int             // geometric sweep values, e.g. [1,2,4,8,16,...]
+	ConcurrencyLevels []int             // concurrency values to sweep, e.g. [1,2,4,8]
+	WarmupRounds      int               // global warmup requests fired before the sweep (discarded)
+	SamplesPerStep    int               // k requests recorded per (n, concurrency) step
+	StepWarmup        int               // per-step warmup requests discarded before sampling
+	TimeoutMS         int               // per-request timeout in milliseconds
 }
 
 // DefaultProbeConfig returns a ProbeConfig with sensible defaults.

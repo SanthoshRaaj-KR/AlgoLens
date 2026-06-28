@@ -39,6 +39,42 @@ export default async function DeploymentPage({ params }: { params: Promise<{ id:
 
       <FingerprintCard v={d.Vector} />
 
+      {(d.HeadersJSON || d.PayloadTemplate) && (
+        <div className="card anim-fade-up" style={{ animationDelay: '40ms' }}>
+          <div className="card-header"><span className="card-title">Probe Config</span></div>
+          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {d.HTTPMethod && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-3)', fontFamily: 'var(--font-geist-mono)', width: 120 }}>Method</span>
+                <code style={{ fontSize: 12, color: 'var(--accent-light)', fontFamily: 'var(--font-geist-mono)' }}>{d.HTTPMethod}</code>
+              </div>
+            )}
+            {d.PayloadTemplate && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-3)', fontFamily: 'var(--font-geist-mono)', marginBottom: 6 }}>Payload Template</div>
+                <pre className="code-block">{d.PayloadTemplate}</pre>
+              </div>
+            )}
+            {d.HeadersJSON && (() => {
+              let parsed: Record<string, string> = {}
+              try { parsed = JSON.parse(d.HeadersJSON) } catch {}
+              return Object.keys(parsed).length > 0 ? (
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-3)', fontFamily: 'var(--font-geist-mono)', marginBottom: 6 }}>Headers</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {Object.entries(parsed).map(([k, v]) => (
+                      <div key={k} style={{ fontSize: 12, fontFamily: 'var(--font-geist-mono)', color: 'var(--text-2)' }}>
+                        <span style={{ color: 'var(--accent-light)' }}>{k}</span>: {v}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null
+            })()}
+          </div>
+        </div>
+      )}
+
       {fittedCurve.length > 0 && (
         <div className="card anim-fade-up" style={{ animationDelay: '60ms' }}>
           <div className="card-header"><span className="card-title">Fitted Curve</span></div>
