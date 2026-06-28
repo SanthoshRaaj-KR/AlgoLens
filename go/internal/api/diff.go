@@ -27,7 +27,153 @@ type diffResponse struct {
 	DeploymentA store.Deployment `json:"deployment_a"`
 	DeploymentB store.Deployment `json:"deployment_b"`
 	Deltas      []fieldDelta     `json:"deltas"`
-	Summary     []string         `json:"summary"` // plain-English sentences
+	Summary     []string         `json:"summary"` // plain-English fingerprint summary
+	SimDiff     *simDiff         `json:"sim_diff,omitempty"`
+}
+
+type simDiff struct {
+	SuccessRateDelta float64         `json:"success_rate_delta"`
+	AvgTurnsDelta    float64         `json:"avg_turns_delta"`
+	AvgLatencyDelta  float64         `json:"avg_latency_delta_ms"`
+	EndpointDeltas   []endpointDelta `json:"endpoint_deltas"`
+	Summary          []string        `json:"summary"`
+}
+
+type endpointDelta struct {
+	Endpoint    string  `json:"endpoint"`
+	AvgLatencyA float64 `json:"avg_latency_a_ms"`
+	AvgLatencyB float64 `json:"avg_latency_b_ms"`
+	Delta       float64 `json:"delta_ms"`
+	Direction   string  `json:"direction"`
+}
+
+type deploymentSummary struct {
+	SuccessCount          int                `json:"success_count"`
+	FailCount             int                `json:"fail_count"`
+	AvgTurns              float64            `json:"avg_turns"`
+	AvgLatencyMS          float64            `json:"avg_latency_ms"`
+	PerEndpointAvgLatency map[string]float64 `json:"per_endpoint_avg_latency"`
+}
+
+func parseSummary(summaryJSON string) (deploymentSummary, error) {
+	if summaryJSON == "" {
+		return deploymentSummary{}, nil
+	}
+	var s deploymentSummary
+	return s, json.Unmarshal([]byte(summaryJSON), &s)
+}
+
+func computeEndpointDeltas(a, b map[string]float64) []endpointDelta {
+	seen := map[string]bool{}
+	for k := range a {
+		seen[k] = true
+	}
+	for k := range b {
+		seen[k] = true
+	}
+
+	dir := func(d float64) string {
+		if math.Abs(d) < 0.5 {
+			return "same"
+		}
+		if d > 0 {
+			return "up"
+		}
+		return "down"
+	}
+
+	out := make([]endpointDelta, 0, len(seen))
+	for ep := range seen {
+		la := a[ep]
+		lb := b[ep]
+		delta := lb - la
+		out = append(out, endpointDelta{
+			Endpoint:    ep,
+			AvgLatencyA: la,
+			AvgLatencyB: lb,
+			Delta:       delta,
+			Direction:   dir(delta),
+		})
+	}
+	// Sort by absolute delta descending (worst regression first)
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && math.Abs(out[j].Delta) > math.Abs(out[j-1].Delta); j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
+	return out
+}
+
+func buildSimSummary(srA, srB float64, a, b deploymentSummary, deltas []endpointDelta) []string {
+	var lines []string
+
+	if srB < srA-0.05 {
+		lines = append(lines, fmt.Sprintf(
+			"Agent success rate dropped %.0f%% → %.0f%% — more sessions are failing to complete the goal.",
+			srA*100, srB*100))
+	} else if srB > srA+0.05 {
+		lines = append(lines, fmt.Sprintf(
+			"Agent success rate improved %.0f%% → %.0f%%.",
+			srA*100, srB*100))
+	}
+
+	if b.AvgTurns > a.AvgTurns*1.2 {
+		lines = append(lines, fmt.Sprintf(
+			"Average turns increased %.1f → %.1f — agents are taking more steps to complete the goal.",
+			a.AvgTurns, b.AvgTurns))
+	}
+
+	if len(deltas) > 0 {
+		worst := deltas[0]
+		if worst.Delta > 10 && worst.AvgLatencyA > 0 {
+			pct := (worst.Delta / worst.AvgLatencyA) * 100
+			lines = append(lines, fmt.Sprintf(
+				"%s latency increased by %.0fms (+%.0f%%) — primary regression source.",
+				worst.Endpoint, worst.Delta, pct))
+		}
+	}
+
+	if len(lines) == 0 {
+		lines = append(lines, "No significant regressions in simulation metrics.")
+	}
+	return lines
+}
+
+func buildSimDiff(a, b store.Deployment) *simDiff {
+	if a.Mode != "simulation" || b.Mode != "simulation" {
+		return nil
+	}
+
+	sumA, _ := parseSummary(a.Summary)
+	sumB, _ := parseSummary(b.Summary)
+
+	totalA := float64(sumA.SuccessCount + sumA.FailCount)
+	totalB := float64(sumB.SuccessCount + sumB.FailCount)
+	var srA, srB float64
+	if totalA > 0 {
+		srA = float64(sumA.SuccessCount) / totalA
+	}
+	if totalB > 0 {
+		srB = float64(sumB.SuccessCount) / totalB
+	}
+
+	epA := sumA.PerEndpointAvgLatency
+	if epA == nil {
+		epA = map[string]float64{}
+	}
+	epB := sumB.PerEndpointAvgLatency
+	if epB == nil {
+		epB = map[string]float64{}
+	}
+	deltas := computeEndpointDeltas(epA, epB)
+
+	return &simDiff{
+		SuccessRateDelta: srB - srA,
+		AvgTurnsDelta:    sumB.AvgTurns - sumA.AvgTurns,
+		AvgLatencyDelta:  sumB.AvgLatencyMS - sumA.AvgLatencyMS,
+		EndpointDeltas:   deltas,
+		Summary:          buildSimSummary(srA, srB, sumA, sumB, deltas),
+	}
 }
 
 func (h *handler) apiDiff(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +207,7 @@ func (h *handler) apiDiff(w http.ResponseWriter, r *http.Request) {
 		DeploymentB: db,
 		Deltas:      deltas,
 		Summary:     summary,
+		SimDiff:     buildSimDiff(da, db),
 	})
 }
 
