@@ -2,6 +2,8 @@ package store
 
 import (
 	"database/sql"
+	"time"
+
 	_ "github.com/lib/pq"
 )
 
@@ -9,11 +11,17 @@ import (
 type DB struct{ *sql.DB }
 
 // Open connects to a Postgres database using the given DSN and runs migrations.
+// Pool tuning: max 20 open, 5 idle, 5-minute lifetime — sensible defaults for
+// a single-node deploy without PgBouncer.
 func Open(dsn string) (*DB, error) {
 	raw, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, err
 	}
+	raw.SetMaxOpenConns(20)
+	raw.SetMaxIdleConns(5)
+	raw.SetConnMaxLifetime(5 * time.Minute)
+	raw.SetConnMaxIdleTime(2 * time.Minute)
 	if err := raw.Ping(); err != nil {
 		raw.Close()
 		return nil, err
