@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Referenc
 import { streamStress } from '@/lib/api'
 import { api } from '@/lib/api'
 import type { StressStep, StressEvent } from '@/lib/types'
+import { useToast } from '@/components/toast'
 
 const DEFAULT_STEPS = '1,5,10,25,50,100'
 
@@ -26,11 +27,11 @@ export default function StressPage() {
   const [timeoutMs, setTimeoutMs] = useState(5000)
   const [headers, setHeaders] = useState<HeaderRow[]>([{ key: '', value: '' }])
 
+  const { toast } = useToast()
   const [running, setRunning] = useState(false)
   const [data, setData] = useState<StressStep[]>([])
   const [breakingPoint, setBreakingPoint] = useState<number | null>(null)
   const [done, setDone] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   const [showSave, setShowSave] = useState(false)
@@ -52,7 +53,7 @@ export default function StressPage() {
   }
 
   async function run() {
-    setRunning(true); setData([]); setBreakingPoint(null); setDone(false); setError(null); setSavedId(null)
+    setRunning(true); setData([]); setBreakingPoint(null); setDone(false); setSavedId(null)
     const concurrency_steps = steps.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0)
     try {
       for await (const event of streamStress({
@@ -66,7 +67,7 @@ export default function StressPage() {
         if (event.type === 'done' || event.type === 'breaking_point') break
       }
     } catch (e) {
-      setError((e as Error).message)
+      toast((e as Error).message)
     } finally {
       setRunning(false)
     }
@@ -81,7 +82,7 @@ export default function StressPage() {
     } else if (ev.type === 'done') {
       setDone(true)
     } else if (ev.type === 'error') {
-      setError(ev.message)
+      toast(ev.message)
     }
   }
 
@@ -100,7 +101,8 @@ export default function StressPage() {
         summary: JSON.stringify({ steps: data, breaking_point: breakingPoint }),
       })
       setSavedId(res.id); setShowSave(false)
-    } catch (e) { setError((e as Error).message) } finally { setSaving(false) }
+      toast('Deployment saved', 'success')
+    } catch (e) { toast((e as Error).message) } finally { setSaving(false) }
   }
 
   return (
@@ -148,8 +150,6 @@ export default function StressPage() {
           </button>
         </div>
       </div>
-
-      {error && <div className="error-box anim-fade-in">{error}</div>}
 
       {breakingPoint && (
         <div className="anim-fade-in" style={{ padding: '12px 18px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 10, fontSize: 13, color: '#f87171', fontFamily: 'var(--font-geist-mono)' }}>

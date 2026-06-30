@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { api, agentStreamURL } from '@/lib/api'
 import type { SpecEndpoint, AgentPlan, AgentEvent } from '@/lib/types'
+import { useToast } from '@/components/toast'
 
 interface HeaderRow { key: string; value: string }
 
@@ -12,6 +13,7 @@ function getHeadersMap(rows: HeaderRow[]) {
 type Step = 'config' | 'plans' | 'running' | 'done'
 
 export default function SimulationPage() {
+  const { toast } = useToast()
   const [step, setStep] = useState<Step>('config')
 
   // Step 1 — config
@@ -55,7 +57,11 @@ export default function SimulationPage() {
       setEndpoints(res.endpoints)
       setWarnings(res.warnings)
       setStep('plans')
-    } catch (e) { setValidateError((e as Error).message) } finally { setValidating(false) }
+    } catch (e) {
+      const msg = (e as Error).message
+      setValidateError(msg)
+      toast(msg)
+    } finally { setValidating(false) }
   }
 
   async function generatePlans() {
@@ -64,7 +70,11 @@ export default function SimulationPage() {
       const res = await api.agentPlan(specUrl, goal, nAgents)
       setPlans(res.plans)
       setPlanErrors(res.validation_errors)
-    } catch (e) { setPlanErrors([(e as Error).message]) } finally { setPlanning(false) }
+    } catch (e) {
+      const msg = (e as Error).message
+      setPlanErrors([msg])
+      toast(msg)
+    } finally { setPlanning(false) }
   }
 
   async function runSimulation() {
@@ -92,7 +102,9 @@ export default function SimulationPage() {
       }
       es.onerror = () => { es.close(); setStep('done') }
     } catch (e) {
-      setPlanErrors([(e as Error).message]); setStep('plans')
+      const msg = (e as Error).message
+      toast(msg)
+      setStep('plans')
     }
   }
 

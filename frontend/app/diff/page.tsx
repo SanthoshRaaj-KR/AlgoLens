@@ -4,18 +4,19 @@ import { api } from '@/lib/api'
 import type { DiffResponse } from '@/lib/types'
 import { ComplexityBadge } from '@/components/complexity-badge'
 import { CurveChart } from '@/components/curve-chart'
+import { useToast } from '@/components/toast'
 
 const LABELS: Record<string, string> = { complexity_exponent: 'Complexity Exponent', memory_growth_rate: 'Memory Growth Rate', concurrency_cliff: 'Concurrency Cliff', breaking_point: 'Breaking Point (n)', read_write_ratio: 'Read/Write Ratio' }
 
 export default function DiffPage() {
+  const { toast } = useToast()
   const [a, setA] = useState(''); const [b, setB] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<DiffResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
 
   async function run() {
-    if (!a || !b) return; setLoading(true); setError(null)
-    try { setResult(await api.diff(Number(a), Number(b))) } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
+    if (!a || !b) return; setLoading(true)
+    try { setResult(await api.diff(Number(a), Number(b))) } catch (e) { toast((e as Error).message) } finally { setLoading(false) }
   }
 
   const curveA: [number,number][] = result ? (() => { try { return JSON.parse(result.deployment_a.FittedCurveJSON) } catch { return [] } })() : []
@@ -35,7 +36,6 @@ export default function DiffPage() {
           <button onClick={run} disabled={loading||!a||!b} className="btn-primary">{loading?<><span className="spinner"/>Comparing…</>:'Compare'}</button>
         </div>
       </div>
-      {error && <div className="error-box anim-fade-in">{error}</div>}
       {result && (
         <div className="anim-fade-up" style={{ display:'flex', flexDirection:'column', gap:20 }}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>

@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import type { SimilarityResult, FingerprintVector } from '@/lib/types'
 import { ComplexityBadge } from '@/components/complexity-badge'
 import Link from 'next/link'
+import { useToast } from '@/components/toast'
 
 const EMPTY: FingerprintVector = { ComplexityClass:'O(n)', ComplexityExponent:1.0, MemoryGrowthRate:0, ConcurrencyCliff:0, BreakingPoint:0, ReadWriteRatio:0.5 }
 const FIELDS: {key:keyof FingerprintVector;label:string;type:string}[] = [
@@ -19,16 +20,16 @@ function scoreStyle(s:number): React.CSSProperties {
 }
 
 export default function SearchPage() {
+  const { toast } = useToast()
   const [vec, setVec] = useState<FingerprintVector>(EMPTY)
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<SimilarityResult[]|null>(null)
-  const [error, setError] = useState<string|null>(null)
 
   const setField = (k:keyof FingerprintVector) => (e:React.ChangeEvent<HTMLInputElement>) => setVec(p=>({...p,[k]:k==='ComplexityClass'?e.target.value:parseFloat(e.target.value)}))
 
   async function run() {
-    setLoading(true); setError(null)
-    try { setResults(await api.search(vec)) } catch(e) { setError((e as Error).message) } finally { setLoading(false) }
+    setLoading(true)
+    try { setResults(await api.search(vec)) } catch(e) { toast((e as Error).message) } finally { setLoading(false) }
   }
 
   return (
@@ -46,7 +47,6 @@ export default function SearchPage() {
         </div>
         <div style={{padding:'0 20px 20px'}}><button onClick={run} disabled={loading} className="btn-primary">{loading?<><span className="spinner"/>Searching…</>:'Search'}</button></div>
       </div>
-      {error && <div className="error-box anim-fade-in">{error}</div>}
       {results && results.length===0 && <div className="card"><div className="empty-state"><div className="empty-icon">◎</div><div className="empty-title">No deployments to compare</div><div className="empty-sub">Save a probe result first, then search for similar ones.</div></div></div>}
       {results && results.length>0 && (
         <div className="card anim-fade-up">
