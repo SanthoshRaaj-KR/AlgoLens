@@ -3,6 +3,8 @@ package api
 import (
 	"database/sql"
 	"net/http"
+	"os"
+	"strings"
 )
 
 // NewRouter wires all public API routes and returns an http.Handler.
@@ -44,10 +46,21 @@ func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
-// corsMiddleware adds permissive CORS headers for local dev.
+// corsMiddleware adds CORS headers. In production set CORS_ORIGIN to the
+// frontend origin (e.g. "https://app.example.com"). Unset = "*" for local dev.
 func corsMiddleware(next http.Handler) http.Handler {
+	allowed := strings.TrimSpace(os.Getenv("CORS_ORIGIN"))
+	if allowed == "" {
+		allowed = "*"
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if allowed == "*" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		} else if origin == allowed {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
