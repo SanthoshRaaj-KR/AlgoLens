@@ -232,17 +232,27 @@ export default function SimulationPage() {
       {step === 'plans' && plans.length > 0 && (
         <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: 14 }}>
-            {plans.map(p => (
+            {plans.map((p, pi) => (
               <div key={p.agent_id} className="card" style={{ padding: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: `1px solid ${personaColor[p.persona] ?? '#888'}40`, color: personaColor[p.persona] ?? '#888', background: `${personaColor[p.persona] ?? '#888'}15`, fontFamily: 'var(--font-geist-mono)' }}>Agent {p.agent_id}</span>
                   <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{p.persona}</span>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-geist-mono)', marginBottom: 6 }}>{p.input_slice}</div>
-                <ol style={{ margin: 0, padding: '0 0 0 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {p.action_plan.map((s, i) => <li key={i} style={{ fontSize: 11, color: 'var(--text-2)', fontFamily: 'var(--font-geist-mono)' }}>{s}</li>)}
-                </ol>
-                <div style={{ marginTop: 8, fontSize: 11, color: '#4ade80', fontFamily: 'var(--font-geist-mono)', borderTop: '1px solid var(--border)', paddingTop: 8 }}>✓ {p.success_condition}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-geist-mono)', marginBottom: 8 }}>{p.input_slice}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+                  {p.action_plan.map((s, si) => (
+                    <div key={si} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-geist-mono)', flexShrink: 0, width: 14, textAlign: 'right' }}>{si + 1}.</span>
+                      <input
+                        className="input"
+                        value={s}
+                        onChange={e => setPlans(prev => prev.map((pp, ppi) => ppi !== pi ? pp : { ...pp, action_plan: pp.action_plan.map((step, ssi) => ssi === si ? e.target.value : step) }))}
+                        style={{ fontSize: 11, padding: '5px 8px', fontFamily: 'var(--font-geist-mono)' }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: '#4ade80', fontFamily: 'var(--font-geist-mono)', borderTop: '1px solid var(--border)', paddingTop: 8 }}>✓ {p.success_condition}</div>
               </div>
             ))}
           </div>
