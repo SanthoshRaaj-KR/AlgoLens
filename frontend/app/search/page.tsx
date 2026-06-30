@@ -47,8 +47,22 @@ export default function SearchPage() {
         </div>
         <div style={{padding:'0 20px 20px'}}><button onClick={run} disabled={loading} className="btn-primary">{loading?<><span className="spinner"/>Searching…</>:'Search'}</button></div>
       </div>
-      {results && results.length===0 && <div className="card"><div className="empty-state"><div className="empty-icon">◎</div><div className="empty-title">No deployments to compare</div><div className="empty-sub">Save a probe result first, then search for similar ones.</div></div></div>}
-      {results && results.length>0 && (
+      {loading && (
+        <div className="card anim-fade-in">
+          <div className="card-header"><span className="card-title">Results</span></div>
+          <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:12 }}>
+            {[0,1,2,3].map(i => (
+              <div key={i} style={{ display:'flex', gap:16, alignItems:'center' }}>
+                <div className="skeleton" style={{ height:14, width:48, flexShrink:0 }} />
+                <div className="skeleton" style={{ height:14, flex:1 }} />
+                <div className="skeleton" style={{ height:14, width:80, flexShrink:0 }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {!loading && results && results.length===0 && <div className="card"><div className="empty-state"><div className="empty-icon">◎</div><div className="empty-title">No deployments to compare</div><div className="empty-sub">Save a probe result first, then search for similar ones.</div></div></div>}
+      {!loading && results && results.length>0 && (
         <div className="card anim-fade-up">
           <div className="card-header"><span className="card-title">Results</span><span style={{fontSize:12,color:'var(--text-3)',fontFamily:'var(--font-geist-mono)'}}>{results.length} found</span></div>
           <table className="data-table">

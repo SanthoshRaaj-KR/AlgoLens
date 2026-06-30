@@ -36,6 +36,25 @@ export default function DiffPage() {
           <button onClick={run} disabled={loading||!a||!b} className="btn-primary">{loading?<><span className="spinner"/>Comparing…</>:'Compare'}</button>
         </div>
       </div>
+      {loading && (
+        <div className="anim-fade-in" style={{ display:'flex', flexDirection:'column', gap:20 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+            {[0,1].map(i => (
+              <div key={i} className="card" style={{ padding:18 }}>
+                <div className="skeleton" style={{ height:20, width:'40%', marginBottom:12 }} />
+                <div className="skeleton" style={{ height:14, width:'80%', marginBottom:8 }} />
+                <div className="skeleton" style={{ height:12, width:'55%' }} />
+              </div>
+            ))}
+          </div>
+          <div className="card">
+            <div className="card-header"><span className="card-title">Summary</span></div>
+            <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:10 }}>
+              {[0,1,2].map(i => <div key={i} className="skeleton" style={{ height:14, width:`${70 - i*10}%` }} />)}
+            </div>
+          </div>
+        </div>
+      )}
       {result && (
         <div className="anim-fade-up" style={{ display:'flex', flexDirection:'column', gap:20 }}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>

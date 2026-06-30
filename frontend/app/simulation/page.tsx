@@ -165,6 +165,18 @@ export default function SimulationPage() {
         </div>
       )}
 
+      {/* Endpoints skeleton during validation */}
+      {validating && (
+        <div className="card anim-fade-in">
+          <div className="card-header"><span className="card-title">Discovering endpoints…</span></div>
+          <div style={{ padding:'8px 20px 16px', display:'flex', flexWrap:'wrap', gap:8 }}>
+            {[90,70,110,85,95,75].map((w,i) => (
+              <div key={i} className="skeleton" style={{ height:26, width:w, borderRadius:6 }} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Discovered endpoints */}
       {step === 'plans' && endpoints.length > 0 && (
         <div className="card anim-fade-in">
@@ -197,6 +209,22 @@ export default function SimulationPage() {
               {planning ? <><span className="spinner" />Planning (Claude is thinking…)</> : 'Generate Plans'}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Plan skeleton during generation */}
+      {planning && (
+        <div className="anim-fade-in" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:14 }}>
+          {Array.from({ length: nAgents }).map((_, i) => (
+            <div key={i} className="card" style={{ padding:16 }}>
+              <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+                <div className="skeleton" style={{ height:22, width:64, borderRadius:99 }} />
+                <div className="skeleton" style={{ height:22, width:80 }} />
+              </div>
+              <div className="skeleton" style={{ height:12, width:'90%', marginBottom:8 }} />
+              {[0,1,2].map(j => <div key={j} className="skeleton" style={{ height:11, width:`${80-j*10}%`, marginBottom:6 }} />)}
+            </div>
+          ))}
         </div>
       )}
 
