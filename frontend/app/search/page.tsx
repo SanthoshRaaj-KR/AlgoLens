@@ -23,6 +23,7 @@ export default function SearchPage() {
   const { toast } = useToast()
   const [vec, setVec] = useState<FingerprintVector>(EMPTY)
   const [loading, setLoading] = useState(false)
+  const [loadingLatest, setLoadingLatest] = useState(false)
   const [results, setResults] = useState<SimilarityResult[]|null>(null)
 
   const setField = (k:keyof FingerprintVector) => (e:React.ChangeEvent<HTMLInputElement>) => setVec(p=>({...p,[k]:k==='ComplexityClass'?e.target.value:parseFloat(e.target.value)}))
@@ -32,6 +33,17 @@ export default function SearchPage() {
     try { setResults(await api.search(vec)) } catch(e) { toast((e as Error).message) } finally { setLoading(false) }
   }
 
+  async function useLatest() {
+    setLoadingLatest(true)
+    try {
+      const all = await api.listDeployments()
+      if (!all.length) { toast('No deployments saved yet', 'warning'); return }
+      const d = all[0]
+      setVec(d.Vector)
+      toast(`Loaded vector from "${d.Name || `#${d.ID}`}"`, 'success')
+    } catch(e) { toast((e as Error).message) } finally { setLoadingLatest(false) }
+  }
+
   return (
     <div className="anim-fade-up" style={{ display:'flex', flexDirection:'column', gap:28 }}>
       <div>
@@ -39,7 +51,12 @@ export default function SearchPage() {
         <p style={{ margin:'6px 0 0', fontSize:13, color:'var(--text-3)', fontFamily:'var(--font-geist-mono)' }}>Find saved deployments with similar fingerprint vectors using cosine similarity</p>
       </div>
       <div className="card">
-        <div className="card-header"><span className="card-title">Query Vector</span></div>
+        <div className="card-header">
+          <span className="card-title">Query Vector</span>
+          <button onClick={useLatest} disabled={loadingLatest} className="btn-secondary" style={{ fontSize:11, padding:'5px 12px' }}>
+            {loadingLatest ? <><span className="spinner"/>Loading…</> : 'Use latest run'}
+          </button>
+        </div>
         <div className="card-body" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16 }}>
           {FIELDS.map(({key,label,type})=>(
             <div key={key}><label className="input-label">{label}</label><input type={type} step="any" value={String(vec[key])} onChange={setField(key)} className="input" /></div>
